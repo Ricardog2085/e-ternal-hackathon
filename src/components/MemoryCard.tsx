@@ -5,6 +5,7 @@ import {
   Video,
   Volume2,
   FileText,
+  Check,
   Send,
   Trash2,
   Loader2,
@@ -22,6 +23,7 @@ export interface Memory {
   type: 'Video' | 'Nota de Voz' | 'Carta';
   dateCreated: string;
   unlockCondition: string;
+  unlockRaw?: string;
   preview: string;
   recipientId?: string;
   fileUrl?: string;
@@ -35,10 +37,11 @@ interface MemoryCardProps {
   memory: Memory;
   isDeleting: boolean;
   onDelete: (id: string, title: string) => void;
+  onEditDelivery: (id: string, recipientId: string | null, deliveryDate: string) => Promise<void>;
   recipients?: Recipient[];
 }
 
-export default function MemoryCard({ memory, isDeleting, onDelete, recipients = [] }: MemoryCardProps) {
+export default function MemoryCard({ memory, isDeleting, onDelete, onEditDelivery, recipients = [] }: MemoryCardProps) {
   // Estado local de rotación para videos (inicia en 0 grados)
   const [rotation, setRotation] = useState<number>(0);
   // Si el archivo murió (era pública), mostrar aviso honesto en vez de reproductor roto
@@ -46,6 +49,30 @@ export default function MemoryCard({ memory, isDeleting, onDelete, recipients = 
   const [sendingWa, setSendingWa] = useState<boolean>(false);
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const [poster, setPoster] = useState<string | undefined>(undefined);
+  // Edición de entrega: destinatario y fecha programada desde la tarjeta.
+  const initialDate = (() => {
+    const m = /^(\d{4}-\d{2}-\d{2})/.exec((memory.unlockRaw || '').trim());
+    return m ? m[1] : '';
+  })();
+  const [editRecipientId, setEditRecipientId] = useState(memory.recipientId || '');
+  const [editDate, setEditDate] = useState(initialDate);
+  const [savingEdit, setSavingEdit] = useState(false);
+  const [editMsg, setEditMsg] = useState<string | null>(null);
+  const editDirty = editRecipientId !== (memory.recipientId || '') || editDate !== initialDate;
+
+  const saveEdit = async () => {
+    if (!editDirty || savingEdit) return;
+    setSavingEdit(true);
+    setEditMsg(null);
+    try {
+      await onEditDelivery(memory.id, editRecipientId || null, editDate);
+      setEditMsg('Guardado ✓');
+    } catch (err) {
+      setEditMsg(err instanceof Error ? err.message : 'No se pudo guardar');
+    } finally {
+      setSavingEdit(false);
+    }
+  };
 
   // Miniatura local: captura el primer cuadro para que el video no se vea
   // negro en celular (donde el navegador no precarga). Si falla, no rompe nada.
@@ -306,6 +333,59 @@ export default function MemoryCard({ memory, isDeleting, onDelete, recipients = 
             <p className="mt-2.5 text-xs text-[#6B625B] line-clamp-2 leading-relaxed">
               {memory.preview}
             </p>
+          )}
+        </div>
+
+        {/* Editar entrega: destinatario y fecha programada */}
+        <div className="mt-4 p-3 rounded-xl bg-[#FDFBF7] border border-[#EFE9DE] space-y-2">
+          <p className="text-[11px] font-bold uppercase tracking-wider text-[#6B625B]">
+            Entrega
+          </p>
+          <select
+            value={editRecipientId}
+            onChange={(e) => {
+              setEditRecipientId(e.target.value);
+              setEditMsg(null);
+            }}
+            aria-label="Destinatario del recuerdo"
+            className="w-full px-3 py-2 rounded-xl bg-[#FFFFFF] border border-[#EFE9DE] focus:border-[#D4AF37] outline-hidden text-sm text-[#2C241E]"
+          >
+            <option value="">Sin asignar</option>
+            {recipients.map((r) => (
+              <option key={r.id} value={r.id}>
+                {r.name}{r.relation ? ` (${r.relation})` : ''}
+              </option>
+            ))}
+          </select>
+          <div className="flex items-center gap-2">
+            <input
+              type="date"
+              value={editDate}
+              onChange={(e) => {
+                setEditDate(e.target.value);
+                setEditMsg(null);
+              }}
+              aria-label="Fecha de entrega"
+              title="Fecha en que se libera este recuerdo"
+              className="flex-1 px-3 py-2 rounded-xl bg-[#FFFFFF] border border-[#EFE9DE] focus:border-[#D4AF37] outline-hidden text-sm text-[#2C241E]"
+            />
+            <button
+              type="button"
+              onClick={saveEdit}
+              disabled={!editDirty || savingEdit}
+              title="Guardar cambios de entrega"
+              className="px-3.5 py-2 rounded-xl bg-[#2C241E] hover:bg-[#3E342B] text-[#FAF4E5] text-xs font-semibold transition-all cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed flex items-center gap-1.5 shrink-0"
+            >
+              {savingEdit ? (
+                <Loader2 className="w-3.5 h-3.5 animate-spin" />
+              ) : (
+                <Check className="w-3.5 h-3.5" />
+              )}
+              Guardar
+            </button>
+          </div>
+          {editMsg && (
+            <p className="text-[11px] text-[#6B625B]">{editMsg}</p>
           )}
         </div>
 

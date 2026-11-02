@@ -99,6 +99,7 @@ function mapRecordToMemory(row: any): Memory {
     fileUrl: fileUrl,
     dateCreated: dateStr,
     unlockCondition: niceCondition,
+    unlockRaw: rawCondition,
     durationOrWords: normalizedType === 'Carta' 
       ? `${previewText.split(/\s+/).filter(Boolean).length || 1} palabras` 
       : normalizedType === 'Video' 
@@ -458,7 +459,7 @@ export default function App() {
       const { data, error } = await insertMemoryToSupabase(
         ownerId,
         formTitle,
-        formRecipient,
+        (selectedRecipientId ? recipients.find((r) => r.id === selectedRecipientId)?.name || formRecipient : formRecipient),
         activeModal || 'Carta',
         formContent,
         uploadedFilePath,
@@ -689,7 +690,7 @@ export default function App() {
       || recipients.find((r) => r.id === selectedRecipientId)?.name
       || '';
     if (!name) {
-      setModalError('Escribe primero el destinatario para convertir en carta.');
+      setModalError('Elige primero el destinatario para convertir en carta.');
       return;
     }
     if (!formContent.trim()) {
@@ -723,6 +724,33 @@ export default function App() {
     } finally {
       setIsDrafting(false);
     }
+  };
+
+  // Editar entrega desde la tarjeta: destinatario y fecha programada.
+  const handleUpdateDelivery = async (id: string, recipientId: string | null, deliveryDate: string) => {
+    const ownerId = session?.user?.id;
+    if (!ownerId) throw new Error('Tu sesión expiró. Ingresa nuevamente.');
+    const rec = recipients.find((r) => r.id === recipientId) || null;
+    const current = memories.find((m) => m.id === id);
+    const rawPrev = (current?.unlockRaw || '').trim();
+    const dm = /^(\d{4}-\d{2}-\d{2})\s*(?:·\s*(.*))?$/.exec(rawPrev);
+    let tail = dm ? (dm[2] || '') : (/^\d{4}-\d{2}-\d{2}/.test(rawPrev) ? '' : rawPrev);
+    if (tail === 'Entrega programada: Fecha especial') tail = '';
+    let unlock = '';
+    if (deliveryDate) unlock = tail ? `${deliveryDate} · ${tail}` : deliveryDate;
+    else unlock = tail;
+    const { error } = await supabase
+      .from('memories')
+      .update({
+        recipient_id: recipientId,
+        recipient: rec ? rec.name : 'Para alguien especial',
+        unlock_condition: unlock,
+      })
+      .eq('id', id)
+      .eq('user_id', ownerId);
+    if (error) throw new Error(error.message);
+    await fetchMemories(ownerId);
+    triggerToast('Entrega actualizada.');
   };
 
   const handleOpenModal = (type: 'Video' | 'Nota de Voz' | 'Carta') => {
@@ -858,7 +886,7 @@ export default function App() {
               <span className="font-serif text-[#D4AF37] text-xl font-bold tracking-widest">E</span>
             </div>
             <div>
-              <span className="text-xl font-serif font-bold tracking-[0.2em] text-[#2C241E] uppercase">
+              <span className="text-lg sm:text-xl font-serif font-bold tracking-[0.15em] sm:tracking-[0.2em] text-[#2C241E] uppercase">
                 E-TERNAL
               </span>
               <span className="block text-[10px] uppercase tracking-widest text-[#D4AF37] font-semibold">
@@ -944,7 +972,7 @@ export default function App() {
         )}
 
         {/* 1. Cabecera con mensaje de bienvenida solemne */}
-        <section className="relative overflow-hidden rounded-3xl bg-gradient-to-b from-[#FFFFFF] to-[#FAF4E5]/50 border border-[#EFE9DE] p-6 sm:p-10 shadow-xs">
+        <section className="relative overflow-hidden rounded-3xl bg-gradient-to-b from-[#FFFFFF] to-[#FAF4E5]/50 border border-[#EFE9DE] p-5 sm:p-10 shadow-xs">
           <div className="absolute top-0 right-0 w-80 h-80 bg-gradient-to-bl from-[#D4AF37]/10 via-[#D4AF37]/5 to-transparent rounded-full blur-3xl pointer-events-none" />
           
           <div className="relative z-10 max-w-2xl">
@@ -953,7 +981,7 @@ export default function App() {
               <span>Espacio Privado e Íntimo</span>
             </div>
 
-            <h1 className="text-3xl sm:text-4xl md:text-5xl font-serif font-bold text-[#2C241E] tracking-tight leading-[1.15]">
+            <h1 className="text-2xl sm:text-4xl md:text-5xl font-serif font-bold text-[#2C241E] tracking-tight leading-[1.15]">
               Bienvenido a tu santuario, <span className="italic font-normal text-[#D4AF37]">{userFirstName}</span>
             </h1>
 
@@ -975,7 +1003,20 @@ export default function App() {
           </div>
         </section>
 
-        {/* 2. Caja superior de creación con 3 botones visibles */}
+        {/* 2. Entrevista del legado: la guía recibe y memoriza */}
+        <section className="space-y-2">
+          <div>
+            <h2 className="text-xl sm:text-2xl font-serif font-bold text-[#2C241E]">
+              Entrevista del legado
+            </h2>
+            <p className="text-xs sm:text-sm text-[#6B625B]">
+              Tu guía te pregunta y memoriza a tu familia
+            </p>
+          </div>
+          <InterviewChat />
+        </section>
+
+        {/* 3. Caja superior de creación con 3 botones visibles */}
         <section className="bg-[#FFFFFF] rounded-2xl border border-[#EFE9DE] shadow-xs p-5 sm:p-6 transition-all hover:border-[#E8D8A6]">
           <div className="flex items-start gap-3.5">
             <button
@@ -1088,7 +1129,7 @@ export default function App() {
           </span>
         </div>
 
-        {/* 3. Grid de recuerdos conectados a Supabase, agrupados por destinatario */}
+        {/* 4. Grid de recuerdos conectados a Supabase, agrupados por destinatario */}
         {loading ? (
           <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-5" role="status" aria-label="Cargando recuerdos">
             {[0, 1, 2].map((i) => (
@@ -1139,6 +1180,7 @@ export default function App() {
                         memory={memory}
                         isDeleting={deletingId === memory.id}
                         onDelete={handleDelete}
+                        onEditDelivery={handleUpdateDelivery}
                         recipients={recipients}
                       />
                     ))}
@@ -1161,6 +1203,7 @@ export default function App() {
                       memory={memory}
                       isDeleting={deletingId === memory.id}
                       onDelete={handleDelete}
+                      onEditDelivery={handleUpdateDelivery}
                       recipients={recipients}
                     />
                   ))}
@@ -1177,7 +1220,7 @@ export default function App() {
           </div>
         )}
 
-        {/* 4. Entrega y destinatarios */}
+        {/* 5. Entrega y destinatarios */}
         <section className="space-y-2">
           <div>
             <h2 className="text-xl sm:text-2xl font-serif font-bold text-[#2C241E]">
@@ -1193,19 +1236,6 @@ export default function App() {
             memories={memories}
             onRecipientsChanged={() => loadRecipients(session.user.id)}
           />
-        </section>
-
-        {/* 5. Entrevista del legado */}
-        <section className="space-y-2">
-          <div>
-            <h2 className="text-xl sm:text-2xl font-serif font-bold text-[#2C241E]">
-              Entrevista del legado
-            </h2>
-            <p className="text-xs sm:text-sm text-[#6B625B]">
-              Tu guía te pregunta y memoriza a tu familia
-            </p>
-          </div>
-          <InterviewChat />
         </section>
 
         {/* Solemn footer banner */}
@@ -1287,42 +1317,48 @@ export default function App() {
                 />
               </div>
 
-              <div>
-                <label className="block text-xs font-semibold text-[#2C241E] uppercase tracking-wider mb-1">
-                  Destinatario *
-                </label>
-                <input
-                  type="text"
-                  required
-                  placeholder="Ej: Sofía (Hija), Mateo (Hijo), Elena (Esposa)..."
-                  value={formRecipient}
-                  onChange={(e) => setFormRecipient(e.target.value)}
-                  className="w-full px-3.5 py-2.5 rounded-xl bg-[#FDFBF7] border border-[#EFE9DE] focus:border-[#D4AF37] focus:ring-1 focus:ring-[#D4AF37] outline-hidden text-sm text-[#2C241E]"
-                />
-              </div>
-
-              <div>
-                <label className="block text-xs font-semibold text-[#2C241E] uppercase tracking-wider mb-1">
-                  Destinatario de la bóveda (opcional)
-                </label>
-                <select
-                  value={selectedRecipientId || ''}
-                  onChange={(e) => {
-                    const id = e.target.value || null;
-                    setSelectedRecipientId(id);
-                    const found = recipients.find((r) => r.id === id);
-                    if (found) setFormRecipient(found.name);
-                  }}
-                  className="w-full px-3.5 py-2.5 rounded-xl bg-[#FDFBF7] border border-[#EFE9DE] focus:border-[#D4AF37] focus:ring-1 focus:ring-[#D4AF37] outline-hidden text-sm text-[#2C241E]"
-                >
-                  <option value="">Sin asignar</option>
-                  {recipients.map((r) => (
-                    <option key={r.id} value={r.id}>
-                      {r.name}{r.relation ? ` (${r.relation})` : ''}
-                    </option>
-                  ))}
-                </select>
-              </div>
+              {recipients.length > 0 ? (
+                <div>
+                  <label className="block text-xs font-semibold text-[#2C241E] uppercase tracking-wider mb-1">
+                    Destinatario *
+                  </label>
+                  <select
+                    required
+                    value={selectedRecipientId || ''}
+                    onChange={(e) => {
+                      const id = e.target.value || null;
+                      setSelectedRecipientId(id);
+                      const found = recipients.find((r) => r.id === id);
+                      if (found) setFormRecipient(found.name);
+                    }}
+                    className="w-full px-3.5 py-2.5 rounded-xl bg-[#FDFBF7] border border-[#EFE9DE] focus:border-[#D4AF37] focus:ring-1 focus:ring-[#D4AF37] outline-hidden text-sm text-[#2C241E]"
+                  >
+                    <option value="">Elige quién lo recibe...</option>
+                    {recipients.map((r) => (
+                      <option key={r.id} value={r.id}>
+                        {r.name}{r.relation ? ` (${r.relation})` : ''}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              ) : (
+                <div>
+                  <label className="block text-xs font-semibold text-[#2C241E] uppercase tracking-wider mb-1">
+                    Destinatario *
+                  </label>
+                  <input
+                    type="text"
+                    required
+                    placeholder="Ej: Sofía (Hija), Mateo (Hijo), Elena (Esposa)..."
+                    value={formRecipient}
+                    onChange={(e) => setFormRecipient(e.target.value)}
+                    className="w-full px-3.5 py-2.5 rounded-xl bg-[#FDFBF7] border border-[#EFE9DE] focus:border-[#D4AF37] focus:ring-1 focus:ring-[#D4AF37] outline-hidden text-sm text-[#2C241E]"
+                  />
+                  <p className="mt-1.5 text-[11px] text-[#6B625B]">
+                    Tip: agrega destinatarios con teléfono en la sección Entrega para enviar por WhatsApp.
+                  </p>
+                </div>
+              )}
 
               {/* Selector o Grabación en Vivo para Video y Nota de Voz */}
               {activeModal !== 'Carta' && (
