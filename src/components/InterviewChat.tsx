@@ -1,10 +1,37 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { Send, Loader2, Sparkles } from 'lucide-react';
+import { Send, Loader2, Sparkles, Mic, Volume2, VolumeX } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 
 interface ChatMessage {
   role: 'user' | 'assistant';
   content: string;
+}
+
+// Voz con Web Speech API del navegador (Chrome/Edge, gratis, sin servidor):
+// micrófono para dictar respuestas y lectura en voz alta de la guía.
+type SpeechRecognitionInstance = {
+  lang: string;
+  interimResults: boolean;
+  maxAlternatives: number;
+  onresult: ((event: { results: ArrayLike<ArrayLike<{ transcript: string }>> }) => void) | null;
+  onerror: ((event: unknown) => void) | null;
+  onend: (() => void) | null;
+  start: () => void;
+  stop: () => void;
+};
+type SpeechRecognitionCtor = new () => SpeechRecognitionInstance;
+
+function getSpeechRecognition(): SpeechRecognitionCtor | null {
+  if (typeof window === 'undefined') return null;
+  const w = window as unknown as {
+    SpeechRecognition?: SpeechRecognitionCtor;
+    webkitSpeechRecognition?: SpeechRecognitionCtor;
+  };
+  return w.SpeechRecognition || w.webkitSpeechRecognition || null;
+}
+
+function ttsAvailable(): boolean {
+  return typeof window !== 'undefined' && 'speechSynthesis' in window;
 }
 
 const GREETING =
@@ -19,16 +46,95 @@ export default function InterviewChat() {
   const [sending, setSending] = useState(false);
   const [failed, setFailed] = useState(false);
   const [failDetail, setFailDetail] = useState<string | null>(null);
+  const [listening, setListening] = useState(false);
+  const [voiceReply, setVoiceReply] = useState(false);
+  const [micSupported] = useState(() => getSpeechRecognition() !== null);
+  const [ttsSupported] = useState(() => ttsAvailable());
   const scrollRef = useRef<HTMLDivElement | null>(null);
+  const recognitionRef = useRef<SpeechRecognitionInstance | null>(null);
 
   useEffect(() => {
     const el = scrollRef.current;
     if (el) el.scrollTo({ top: el.scrollHeight, behavior: 'smooth' });
   }, [messages, sending]);
 
+  // Al salir: apagar micrófono y voz para no dejar audio colgado.
+  useEffect(() => {
+    return () => {
+      try {
+        recognitionRef.current?.stop();
+      } catch {
+        /* sin micrófono activo */
+      }
+      try {
+        if (ttsAvailable()) window.speechSynthesis.cancel();
+      } catch {
+        /* sin voz activa */
+      }
+    };
+  }, []);
+
+  const speak = (text: string) => {
+    if (!voiceReply || !ttsSupported || !text.trim()) return;
+    try {
+      const synth = window.speechSynthesis;
+      synth.cancel();
+      const utter = new SpeechSynthesisUtterance(text);
+      utter.lang = 'es-ES';
+      utter.rate = 0.95;
+      synth.speak(utter);
+    } catch {
+      /* voz no disponible: el chat sigue normal */
+    }
+  };
+
+  const stopListening = () => {
+    try {
+      recognitionRef.current?.stop();
+    } catch {
+      /* sin micrófono activo */
+    }
+    setListening(false);
+  };
+
+  const toggleListen = () => {
+    const Ctor = getSpeechRecognition();
+    if (!Ctor) return;
+    if (listening) {
+      stopListening();
+      return;
+    }
+    try {
+      if (ttsSupported) window.speechSynthesis.cancel();
+    } catch {
+      /* sin voz activa */
+    }
+    const rec = new Ctor();
+    rec.lang = 'es-ES';
+    rec.interimResults = false;
+    rec.maxAlternatives = 1;
+    rec.onresult = (event) => {
+      const last = event.results[event.results.length - 1];
+      const transcript = last && last[0] ? last[0].transcript : '';
+      if (transcript.trim()) {
+        setDraft((prev) => (prev ? `${prev} ${transcript.trim()}` : transcript.trim()));
+      }
+    };
+    rec.onerror = () => setListening(false);
+    rec.onend = () => setListening(false);
+    recognitionRef.current = rec;
+    try {
+      rec.start();
+      setListening(true);
+    } catch {
+      setListening(false);
+    }
+  };
+
   const send = async () => {
     const text = draft.trim();
     if (!text || sending) return;
+    stopListening();
     setDraft('');
     setSavedNote(null);
     setFailed(false);
@@ -48,6 +154,7 @@ export default function InterviewChat() {
       const reply = (data?.reply || '').toString() || 'Perdona, no pude responder. Inténtalo de nuevo.';
       const saved = Array.isArray(data?.saved) ? data.saved.filter(Boolean) : [];
       setMessages((prev) => [...prev, { role: 'assistant', content: reply }]);
+      speak(reply);
       if (saved.length > 0) {
         setSavedNote(`He guardado en tu perfil: ${saved.join(', ')}`);
       }
@@ -88,6 +195,31 @@ export default function InterviewChat() {
           <p className="text-sm font-semibold text-[#2C241E]">Guía E-ternal</p>
           <p className="text-xs text-[#6B625B]">Te pregunto y memorizo a tu familia</p>
         </div>
+        {ttsSupported && (
+          <button
+            type="button"
+            onClick={() => {
+              if (voiceReply) {
+                try {
+                  window.speechSynthesis.cancel();
+                } catch {
+                  /* sin voz activa */
+                }
+              }
+              setVoiceReply((v) => !v);
+            }}
+            title={voiceReply ? 'Silenciar voz de la guía' : 'Escuchar respuestas en voz alta'}
+            aria-label={voiceReply ? 'Silenciar voz de la guía' : 'Escuchar respuestas en voz alta'}
+            aria-pressed={voiceReply}
+            className={`ml-auto p-2.5 rounded-xl border transition-all cursor-pointer shrink-0 ${
+              voiceReply
+                ? 'bg-[#FAF4E5] border-[#D4AF37]/60 text-[#D4AF37]'
+                : 'bg-[#FFFFFF] border-[#EFE9DE] text-[#6B625B] hover:text-[#2C241E]'
+            }`}
+          >
+            {voiceReply ? <Volume2 className="w-5 h-5" /> : <VolumeX className="w-5 h-5" />}
+          </button>
+        )}
       </div>
 
       <div ref={scrollRef} className="px-5 sm:px-6 py-5 space-y-3.5 max-h-[380px] overflow-y-auto">
@@ -127,12 +259,29 @@ export default function InterviewChat() {
       )}
 
       <div className="px-5 sm:px-6 pb-5 flex items-center gap-2.5">
+        {micSupported && (
+          <button
+            type="button"
+            onClick={toggleListen}
+            disabled={sending}
+            title={listening ? 'Dejar de escuchar' : 'Dictar con tu voz'}
+            aria-label={listening ? 'Dejar de escuchar' : 'Dictar con tu voz'}
+            aria-pressed={listening}
+            className={`w-12 h-12 rounded-xl flex items-center justify-center shadow-sm transition-all cursor-pointer disabled:opacity-60 disabled:cursor-not-allowed shrink-0 ${
+              listening
+                ? 'bg-red-500 hover:bg-red-600 text-white animate-pulse'
+                : 'bg-[#FDFBF7] border border-[#EFE9DE] hover:border-[#D4AF37]/60 text-[#2C241E]'
+            }`}
+          >
+            <Mic className="w-5 h-5" />
+          </button>
+        )}
         <input
           type="text"
           value={draft}
           onChange={(e) => setDraft(e.target.value)}
           onKeyDown={handleKey}
-          placeholder="Escribe tu respuesta aquí..."
+          placeholder={listening ? 'Te escucho... habla ahora' : 'Escribe o pulsa el micrófono...'}
           disabled={sending}
           className="flex-1 px-4 py-3 rounded-xl bg-[#FDFBF7] border border-[#EFE9DE] focus:border-[#D4AF37] focus:ring-1 focus:ring-[#D4AF37] outline-hidden text-[15px] text-[#2C241E] disabled:opacity-60"
         />

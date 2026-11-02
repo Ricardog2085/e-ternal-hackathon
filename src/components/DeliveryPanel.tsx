@@ -261,7 +261,8 @@ export default function DeliveryPanel({ userId, recipients, memories, onRecipien
         media = stored;
       }
       const text = mem ? (mem.preview || mem.title) : '';
-      const excerpt = text.length > 900 ? text.slice(0, 900) + '...' : text;
+      // Las cartas viajan completas: son el mensaje. Video/audio llevan extracto + enlace.
+      const excerpt = mem && mem.type === 'Carta' ? text : (text.length > 900 ? text.slice(0, 900) + '...' : text);
       const msg = `Hola ${rec.name}, E-ternal te entrega un legado: ${excerpt || '(ver adjunto)'}${media ? `\n${media}` : ''}`;
       window.open(`https://wa.me/${digits}?text=${encodeURIComponent(msg)}`, '_blank', 'noopener');
     } finally {

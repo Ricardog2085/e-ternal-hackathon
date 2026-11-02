@@ -39,9 +39,9 @@ interface MemoryCardProps {
 }
 
 export default function MemoryCard({ memory, isDeleting, onDelete, recipients = [] }: MemoryCardProps) {
-  // Estado local de rotación para videos (inicia en 0 grados)
+  // Estado local de rotaciÃƒÂ³n para videos (inicia en 0 grados)
   const [rotation, setRotation] = useState<number>(0);
-  // Si el archivo murió (era pública), mostrar aviso honesto en vez de reproductor roto
+  // Si el archivo muriÃƒÂ³ (era pÃƒÂºblica), mostrar aviso honesto en vez de reproductor roto
   const [mediaDead, setMediaDead] = useState<boolean>(false);
   const [sendingWa, setSendingWa] = useState<boolean>(false);
   const videoRef = useRef<HTMLVideoElement | null>(null);
@@ -75,8 +75,8 @@ export default function MemoryCard({ memory, isDeleting, onDelete, recipients = 
     }
   };
 
-  // Envío directo por video: abre wa.me con mensaje + enlace.
-  // Con teléfono va al chat; sin teléfono abre el selector de chats.
+  // EnvÃƒÂ­o directo por video: abre wa.me con mensaje + enlace.
+  // Con telÃƒÂ©fono va al chat; sin telÃƒÂ©fono abre el selector de chats.
   const sendWa = async () => {
     setSendingWa(true);
     try {
@@ -91,7 +91,8 @@ export default function MemoryCard({ memory, isDeleting, onDelete, recipients = 
         media = memory.fileUrl;
       }
       const text = memory.preview || memory.title || '';
-      const excerpt = text.length > 900 ? text.slice(0, 900) + '...' : text;
+      // Las cartas viajan completas: son el mensaje. Video/audio llevan extracto + enlace.
+      const excerpt = memory.type === 'Carta' ? text : (text.length > 900 ? text.slice(0, 900) + '...' : text);
       const phone = (recipients.find((r) => r.id === memory.recipientId)?.phone || '').replace(/\D/g, '');
       const msg = `Hola ${memory.recipient}, E-ternal te entrega un legado: ${excerpt || '(ver adjunto)'}${media ? `\n${media}` : ''}`;
       const url = phone
@@ -103,7 +104,7 @@ export default function MemoryCard({ memory, isDeleting, onDelete, recipients = 
     }
   };
 
-  // Lógica de Giro: suma 90 grados sucesivamente (0, 90, 180, 270 y vuelta a 0)
+  // LÃƒÂ³gica de Giro: suma 90 grados sucesivamente (0, 90, 180, 270 y vuelta a 0)
   const handleRotate = () => {
     setRotation((prev) => (prev + 90) % 360);
   };
@@ -123,7 +124,7 @@ export default function MemoryCard({ memory, isDeleting, onDelete, recipients = 
 
       <div className="p-5 sm:p-6 flex-1 flex flex-col justify-between">
         <div>
-          {/* Header of the Card: Destinatario + Tipo de Archivo + Botón Eliminar con estado de carga */}
+          {/* Header of the Card: Destinatario + Tipo de Archivo + BotÃƒÂ³n Eliminar con estado de carga */}
           <div className="flex items-start justify-between gap-3 mb-3">
             <div className="flex flex-wrap items-center gap-2">
               <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs font-semibold border bg-[#FAF4E5] text-[#2C241E] border-[#E8D8A6]">
@@ -154,7 +155,7 @@ export default function MemoryCard({ memory, isDeleting, onDelete, recipients = 
                 )}
                 <span className="text-[11px] font-semibold">WhatsApp</span>
               </button>
-              {/* Botón de papelera para DELETE con texto de carga 'Eliminando...' */}
+              {/* BotÃƒÂ³n de papelera para DELETE con texto de carga 'Eliminando...' */}
               <button
                 type="button"
                 onClick={() => onDelete(memory.id, memory.title)}
@@ -187,7 +188,7 @@ export default function MemoryCard({ memory, isDeleting, onDelete, recipients = 
                 isSideways ? 'min-h-[300px] sm:min-h-[340px] p-2' : 'min-h-[180px]'
               }`}
             >
-              {/* Botón celestial de rotación */}
+              {/* BotÃƒÂ³n celestial de rotaciÃƒÂ³n */}
               <div className="absolute top-2.5 right-2.5 z-20">
                 <button
                   type="button"
@@ -198,12 +199,12 @@ export default function MemoryCard({ memory, isDeleting, onDelete, recipients = 
                 >
                   <RotateCw className="w-3.5 h-3.5 transition-transform duration-300 group-hover/rotate:90" />
                   <span className="text-[11px] font-mono tracking-tight">
-                    Girar {rotation > 0 ? `(${rotation}°)` : ''}
+                    Girar {rotation > 0 ? `(${rotation}Ã‚Â°)` : ''}
                   </span>
                 </button>
               </div>
 
-              {/* Reproductor de video con transformación rotacional animada */}
+              {/* Reproductor de video con transformaciÃƒÂ³n rotacional animada */}
               <video
                 ref={videoRef}
                 playsInline
@@ -222,14 +223,14 @@ export default function MemoryCard({ memory, isDeleting, onDelete, recipients = 
                 }`}
                 preload="metadata"
               >
-                Tu navegador no soporta la reproducción de video.
+                Tu navegador no soporta la reproducciÃƒÂ³n de video.
               </video>
             </div>
           )}
 
           {isVideo && memory.fileUrl && mediaDead && (
             <div className="mt-3.5 p-3.5 rounded-xl bg-amber-50 border border-amber-200 text-amber-900 text-xs">
-              Este video ya no está disponible en la bóveda (es de antes del modo privado). Crea de nuevo el recuerdo para restaurarlo.
+              Este video ya no estÃƒÂ¡ disponible en la bÃƒÂ³veda (es de antes del modo privado). Crea de nuevo el recuerdo para restaurarlo.
             </div>
           )}
 
@@ -264,14 +265,14 @@ export default function MemoryCard({ memory, isDeleting, onDelete, recipients = 
                 className="w-full h-10 rounded-lg accent-[#D4AF37]"
                 preload="metadata"
               >
-                Tu navegador no soporta la reproducción de audio.
+                Tu navegador no soporta la reproducciÃƒÂ³n de audio.
               </audio>
             </div>
           )}
 
           {isAudio && memory.fileUrl && mediaDead && (
             <div className="mt-3.5 p-3.5 rounded-xl bg-amber-50 border border-amber-200 text-amber-900 text-xs">
-              Este audio ya no está disponible en la bóveda (es de antes del modo privado). Crea de nuevo el recuerdo para restaurarlo.
+              Este audio ya no estÃƒÂ¡ disponible en la bÃƒÂ³veda (es de antes del modo privado). Crea de nuevo el recuerdo para restaurarlo.
             </div>
           )}
 

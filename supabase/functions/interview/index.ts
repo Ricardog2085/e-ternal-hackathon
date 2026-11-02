@@ -259,9 +259,109 @@ async function demoAnswer(
   return j({ reply: demoReply(userMsgs.length, saved, lastUser, knownNames), saved, demo: true });
 }
 
+// ---------- Borrador de carta con la voz de la persona ----------
+
+const DRAFT_SYSTEM = [
+  "Eres 'Pluma E-ternal': redactas cartas de legado en español sencillo, cálido y corto para adultos mayores.",
+  "Usa SOLO los nombres y datos reales de la memoria familiar y del mensaje: jamás inventes nombres, fechas ni hechos.",
+  "Escribe en primera persona, como si fuera la persona despidiéndose con amor. Tono tierno, sin palabras difíciles.",
+  "Entre 120 y 220 palabras. Cierra con 'Con todo mi amor,' SIN firmar ningún nombre (la persona firma).",
+  "Devuelve SOLO el texto de la carta, sin comillas ni explicaciones.",
+].join(" ");
+
+function letterText(row: Record<string, unknown>): string {
+  const v = row.context ?? row.contexto ?? row.content ?? row.contenido ?? row.preview ?? row.mensaje ?? "";
+  return String(v || "");
+}
+
+function demoDraftLetter(
+  recipient: string,
+  memRows: { name: string; relation: string | null; notes: string | null }[],
+  hint: string,
+): string {
+  const names = memRows.map((r) => r.name).filter(Boolean);
+  const detail = memRows.map((r) => r.notes ? `${r.name}: ${r.notes.slice(0, 120)}` : "").filter(Boolean).join(" ");
+  const others = names.filter((n) => n.toLowerCase() !== recipient.toLowerCase()).slice(0, 4);
+  const lines = [
+    `Querida ${recipient}:`,
+    "",
+    "Te escribo estas líneas para que siempre tengas un pedazo de mí contigo, aun cuando yo ya no esté.",
+    hint.trim()
+      ? `Esto es lo que siento: ${hint.trim().slice(0, 400)}`
+      : "Quiero que sepas que eres una de las personas que más he amado en esta vida.",
+    detail ? `Guardo en mi corazón: ${detail.slice(0, 300)}.` : "",
+    others.length > 0
+      ? `Cuida mucho a ${others.join(", ")} y mantengan a la familia unida.`
+      : "Mantén a nuestra familia unida, que es lo más valioso que dejamos.",
+    "Sé buena persona, trabaja con alegría y nunca tengas miedo de empezar de nuevo.",
+    "",
+    "Con todo mi amor,",
+  ];
+  return lines.filter((l) => l !== "").join("\n").replace(/\n{3,}/g, "\n\n");
+}
+
+async function draftLetter(
+  sb: ReturnType<typeof createClient>,
+  userId: string,
+  recipientName: string,
+  hint: string,
+  apiKey: string,
+  model: string,
+  forceDemo: boolean,
+) {
+  const { data: memRows } = await sb.from("family_members")
+    .select("name, relation, birthdate, notes").eq("user_id", userId)
+    .order("created_at", { ascending: true }).limit(30);
+  const fam = ((memRows || []) as { name: string; relation: string | null; birthdate: string | null; notes: string | null }[]);
+  const memList = fam
+    .map((r) => `- ${r.name}${r.relation ? ` (${r.relation})` : ""}${r.birthdate ? `, cumpleaños ${r.birthdate}` : ""}${r.notes ? `: ${r.notes.slice(0, 150)}` : ""}`)
+    .join("\n");
+  let styleSamples = "";
+  try {
+    const { data: letters } = await sb.from("memories").select("*")
+      .eq("user_id", userId).ilike("type", "%carta%")
+      .order("created_at", { ascending: false }).limit(2);
+    const samples = ((letters || []) as Record<string, unknown>[])
+      .map((r) => trunc(letterText(r), 500).trim()).filter((s) => s.length > 20);
+    if (samples.length > 0) {
+      styleSamples = `\nMuestras de cómo escribe esta persona (imita su tono y palabras sencillas):\n${samples.map((s) => `"${s}"`).join("\n")}`;
+    }
+  } catch {
+    /* sin muestras: se redacta igual */
+  }
+  const recipient = recipientName.trim().slice(0, 120) || "mi amor";
+  if (!apiKey || forceDemo) {
+    console.log("interview draft demo (no key)");
+    return j({ draft: demoDraftLetter(recipient, fam, hint), demo: true });
+  }
+  const userMsg = [
+    `Destinatario: ${recipient}.`,
+    memList ? `Memoria familiar real (úsala):\n${memList}` : "Memoria familiar: aún vacía.",
+    styleSamples,
+    hint.trim()
+      ? `La persona ya empezó así (continúa y mejora manteniendo SU voz, sin contradecirla): "${hint.trim().slice(0, 800)}"`
+      : "Redacta la carta desde cero con calidez.",
+  ].filter(Boolean).join("\n\n");
+  try {
+    const answer = await chatCompletions(apiKey, model, [
+      { role: "system", content: DRAFT_SYSTEM },
+      { role: "user", content: userMsg },
+    ], [], 1500);
+    const draft = ((answer as { choices?: { message?: { content?: string } }[] })?.choices?.[0]?.message?.content || "").trim();
+    if (draft.length >= 40) {
+      console.log("interview draft ok");
+      return j({ draft, demo: false });
+    }
+    console.error("interview draft empty, using template");
+  } catch (e) {
+    console.error("interview draft model failed, using template:", e instanceof Error ? e.message : e);
+  }
+  return j({ draft: demoDraftLetter(recipient, fam, hint), demo: true });
+}
+
 // ---------- Llamada al modelo ----------
 
-async function chatCompletions(apiKey: string, model: string, messages: unknown[], tools: unknown[]) {
+async function chatCompletions(apiKey: string, model: string, messages: unknown[], tools: unknown[], maxTokens = 800) {
   const ctrl = new AbortController();
   const timer = setTimeout(() => ctrl.abort(), 25000);
   const reasoningEffort = (Deno.env.get("MODEL_REASONING") || "").trim();
@@ -275,8 +375,8 @@ async function chatCompletions(apiKey: string, model: string, messages: unknown[
       body: JSON.stringify({
         model,
         messages,
-        // 800: llamadas cortas; si razona de más, limita con el secreto MODEL_REASONING=low
-        max_tokens: 800,
+        // Llamadas cortas por defecto; los borradores de carta piden más.
+        max_tokens: maxTokens,
         ...(reasoningEffort ? { reasoning_effort: reasoningEffort } : {}),
         ...(Array.isArray(tools) && tools.length > 0 ? { tools, tool_choice: "auto" } : {}),
       }),
@@ -351,11 +451,16 @@ serve(async (req) => {
     const user = userData.user;
     console.log(`interview user ok: ${user.id}`);
 
-    let body: { messages?: unknown } = {};
+    let body: { messages?: unknown; action?: unknown; recipient_name?: unknown; hint?: unknown } = {};
     try {
       body = await req.json();
     } catch {
       return j({ error: "bad_request", code: "bad_json", detail: "Envía { messages: [...] } en JSON." }, 400);
+    }
+    if (body?.action === "draft-letter") {
+      const recipientName = typeof body.recipient_name === "string" ? body.recipient_name : "";
+      const hint = typeof body.hint === "string" ? body.hint : "";
+      return await draftLetter(sb, user.id, recipientName, hint, apiKey, model, forceDemo);
     }
     const rawMsgs = Array.isArray(body?.messages) ? body.messages.slice(-12) : [];
     const history = rawMsgs.filter(
