@@ -46,6 +46,7 @@ export default function InterviewChat() {
   const [sending, setSending] = useState(false);
   const [failed, setFailed] = useState(false);
   const [failDetail, setFailDetail] = useState<string | null>(null);
+  const [micError, setMicError] = useState<string | null>(null);
   const [listening, setListening] = useState(false);
   const [voiceReply, setVoiceReply] = useState(false);
   const [micSupported] = useState(() => getSpeechRecognition() !== null);
@@ -74,8 +75,8 @@ export default function InterviewChat() {
     };
   }, []);
 
-  const speak = (text: string) => {
-    if (!voiceReply || !ttsSupported || !text.trim()) return;
+  const speakNow = (text: string) => {
+    if (!ttsSupported || !text.trim()) return;
     try {
       const synth = window.speechSynthesis;
       synth.cancel();
@@ -86,6 +87,11 @@ export default function InterviewChat() {
     } catch {
       /* voz no disponible: el chat sigue normal */
     }
+  };
+
+  const speak = (text: string) => {
+    if (!voiceReply) return;
+    speakNow(text);
   };
 
   const stopListening = () => {
@@ -100,6 +106,7 @@ export default function InterviewChat() {
   const toggleListen = () => {
     const Ctor = getSpeechRecognition();
     if (!Ctor) return;
+    setMicError(null);
     if (listening) {
       stopListening();
       return;
@@ -118,9 +125,24 @@ export default function InterviewChat() {
       const transcript = last && last[0] ? last[0].transcript : '';
       if (transcript.trim()) {
         setDraft((prev) => (prev ? `${prev} ${transcript.trim()}` : transcript.trim()));
+        setMicError(null);
       }
     };
-    rec.onerror = () => setListening(false);
+    rec.onerror = (event: unknown) => {
+      setListening(false);
+      const code = (event as { error?: string })?.error || '';
+      if (code === 'not-allowed' || code === 'service-not-allowed') {
+        setMicError('El navegador bloqueó el micrófono: pulsa el candado de la barra de dirección, permite el micrófono y recarga la página.');
+      } else if (code === 'no-speech') {
+        setMicError('No te escuché: acércate al micrófono y vuelve a pulsar.');
+      } else if (code === 'audio-capture') {
+        setMicError('No encontré ningún micrófono en este equipo.');
+      } else if (code === 'network') {
+        setMicError('El dictado necesita conexión a internet.');
+      } else if (code) {
+        setMicError(`El micrófono falló (${code}). Vuelve a pulsar.`);
+      }
+    };
     rec.onend = () => setListening(false);
     recognitionRef.current = rec;
     try {
@@ -128,6 +150,7 @@ export default function InterviewChat() {
       setListening(true);
     } catch {
       setListening(false);
+      setMicError('No pude abrir el micrófono. Revisa el permiso en el candado de la barra de dirección.');
     }
   };
 
@@ -205,8 +228,11 @@ export default function InterviewChat() {
                 } catch {
                   /* sin voz activa */
                 }
+                setVoiceReply(false);
+              } else {
+                setVoiceReply(true);
+                speakNow('Voz activada. A partir de ahora te leeré mis respuestas.');
               }
-              setVoiceReply((v) => !v);
             }}
             title={voiceReply ? 'Silenciar voz de la guía' : 'Escuchar respuestas en voz alta'}
             aria-label={voiceReply ? 'Silenciar voz de la guía' : 'Escuchar respuestas en voz alta'}
@@ -249,6 +275,12 @@ export default function InterviewChat() {
       {savedNote && (
         <p className="mx-5 sm:mx-6 mb-3 px-3.5 py-2 rounded-xl bg-[#FAF4E5] border border-[#E8D8A6] text-xs text-[#2C241E]">
           {savedNote}
+        </p>
+      )}
+
+      {micError && (
+        <p className="mx-5 sm:mx-6 mb-3 px-3.5 py-2 rounded-xl bg-amber-50 border border-amber-200 text-amber-900 text-xs">
+          {micError}
         </p>
       )}
 
