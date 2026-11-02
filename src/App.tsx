@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import {
   Video,
   Mic,
+  MessageCircle,
   PenTool,
   LayoutGrid,
   Lock,
@@ -1004,7 +1005,7 @@ export default function App() {
         </section>
 
         {/* 2. Entrevista del legado: la guía recibe y memoriza */}
-        <section className="space-y-2">
+        <section id="guia-eternal" className="space-y-2 scroll-mt-20">
           <div>
             <h2 className="text-xl sm:text-2xl font-serif font-bold text-[#2C241E]">
               Entrevista del legado
@@ -1018,33 +1019,8 @@ export default function App() {
 
         {/* 3. Caja superior de creación con 3 botones visibles */}
         <section className="bg-[#FFFFFF] rounded-2xl border border-[#EFE9DE] shadow-xs p-5 sm:p-6 transition-all hover:border-[#E8D8A6]">
-          <div className="flex items-start gap-3.5">
-            <button
-              type="button"
-              onClick={() => setIsProfileModalOpen(true)}
-              title="Editar tu identidad sagrada"
-              className="w-11 h-11 rounded-full bg-[#FAF4E5] border border-[#D4AF37]/40 hover:border-[#D4AF37] hover:scale-105 flex items-center justify-center text-sm font-serif font-bold text-[#2C241E] shrink-0 select-none cursor-pointer transition-all shadow-2xs"
-            >
-              {userInitials}
-            </button>
-            
-            <div className="flex-1">
-              <div 
-                onClick={() => handleOpenModal('Carta')}
-                className="w-full bg-[#FDFBF7] border border-[#EFE9DE] rounded-xl px-4 py-3 text-sm text-[#6B625B] hover:border-[#D4AF37]/60 hover:bg-[#FFFFFF] transition-all cursor-pointer flex items-center justify-between"
-              >
-                <span>¿Qué legado, lección o memoria deseas confiar hoy a Supabase?</span>
-                <span className="text-xs bg-[#FAF4E5] text-[#D4AF37] px-2.5 py-1 rounded-md font-semibold border border-[#E8D8A6]/60">
-                  Preservar
-                </span>
-              </div>
-            </div>
-          </div>
-
-          <div className="my-4 border-t border-[#F3ECE0]" />
-
-          {/* 3 visible action buttons: 'Grabar Video', 'Nota de Voz', 'Escribir Carta' */}
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5 sm:gap-3">
+          {/* 4 botones: 'Grabar Video', 'Nota de Voz', 'Escribir Carta', 'Hablar con la guía' */}
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5 sm:gap-3">
             <button
               type="button"
               onClick={() => handleOpenModal('Video')}
@@ -1076,6 +1052,17 @@ export default function App() {
                 <PenTool className="w-4 h-4" />
               </div>
               <span className="font-semibold text-[#2C241E]">Escribir Carta</span>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => document.getElementById('guia-eternal')?.scrollIntoView({ behavior: 'smooth', block: 'start' })}
+              className="flex items-center justify-center gap-2.5 px-4 py-3 rounded-xl bg-[#2C241E] hover:bg-[#3E342B] text-[#FAF4E5] border border-[#2C241E] transition-all text-sm font-medium group active:scale-[0.99] cursor-pointer shadow-2xs"
+            >
+              <div className="w-8 h-8 rounded-lg bg-[#D4AF37]/20 flex items-center justify-center text-[#D4AF37] group-hover:scale-110 transition-transform shadow-2xs">
+                <MessageCircle className="w-4 h-4" />
+              </div>
+              <span className="font-semibold text-[#FAF4E5]">Hablar con la guía</span>
             </button>
           </div>
         </section>
