@@ -339,8 +339,8 @@ async function draftLetter(
     memList ? `Memoria familiar real (úsala):\n${memList}` : "Memoria familiar: aún vacía.",
     styleSamples,
     hint.trim()
-      ? `La persona ya empezó así (continúa y mejora manteniendo SU voz, sin contradecirla): "${hint.trim().slice(0, 800)}"`
-      : "Redacta la carta desde cero con calidez.",
+      ? `La persona dictó esto (úsalo TODO sin omitir nada: solo ordénalo, dale calidez y completa con suavidad): "${hint.trim().slice(0, 1200)}"`
+      : "Redacta la carta desde cero con calidez usando la memoria familiar.",
   ].filter(Boolean).join("\n\n");
   try {
     const answer = await chatCompletions(apiKey, model, [
