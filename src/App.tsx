@@ -35,6 +35,7 @@ import { fetchRecipients, type Recipient } from './lib/vault';
 // Dictado por voz con Web Speech API del navegador (sin servidor).
 type DictationRecognition = {
   lang: string;
+  continuous: boolean;
   interimResults: boolean;
   maxAlternatives: number;
   onresult: ((event: { results: ArrayLike<ArrayLike<{ transcript: string }>> }) => void) | null;
@@ -141,6 +142,7 @@ export default function App() {
   const [dictSupported] = useState(() => getDictationRecognition() !== null);
   const [draftTtsSupported] = useState(() => typeof window !== 'undefined' && 'speechSynthesis' in window);
   const dictationRef = useRef<DictationRecognition | null>(null);
+  const wantDictation = useRef(false);
   const [deletingId, setDeletingId] = useState<string | null>(null);
 
   // Form states for creating a new memory modal
@@ -546,6 +548,7 @@ export default function App() {
   // Al cerrar el modal: apagar dictado y lectura en voz alta.
   useEffect(() => {
     if (activeModal) return;
+    wantDictation.current = false;
     try {
       dictationRef.current?.stop();
     } catch {
@@ -564,6 +567,7 @@ export default function App() {
   }, [activeModal]);
 
   const stopDictation = () => {
+    wantDictation.current = false;
     try {
       dictationRef.current?.stop();
     } catch {
@@ -589,6 +593,7 @@ export default function App() {
     setReadingDraft(false);
     const rec = new Ctor();
     rec.lang = 'es-ES';
+    rec.continuous = true;
     rec.interimResults = false;
     rec.maxAlternatives = 1;
     rec.onresult = (event) => {
@@ -602,6 +607,9 @@ export default function App() {
     rec.onerror = (event: unknown) => {
       setDictating(false);
       const code = (event as { error?: string })?.error || '';
+      if (code === 'not-allowed' || code === 'service-not-allowed' || code === 'audio-capture') {
+        wantDictation.current = false;
+      }
       if (code === 'not-allowed' || code === 'service-not-allowed') {
         setDictError('El navegador bloqueó el micrófono: pulsa el candado de la barra de dirección, permite el micrófono y recarga.');
       } else if (code === 'no-speech') {
@@ -614,12 +622,26 @@ export default function App() {
         setDictError(`El micrófono falló (${code}). Vuelve a pulsar.`);
       }
     };
-    rec.onend = () => setDictating(false);
+    rec.onend = () => {
+      // Si el navegador corta al pausar, reabrir mientras la persona no lo detenga.
+      if (wantDictation.current) {
+        try {
+          rec.start();
+        } catch {
+          wantDictation.current = false;
+          setDictating(false);
+        }
+      } else {
+        setDictating(false);
+      }
+    };
     dictationRef.current = rec;
+    wantDictation.current = true;
     try {
       rec.start();
       setDictating(true);
     } catch {
+      wantDictation.current = false;
       setDictating(false);
       setDictError('No pude abrir el micrófono. Revisa el permiso en el candado de la barra de dirección.');
     }
@@ -1476,7 +1498,7 @@ export default function App() {
                   )}
                 </div>
                 {activeModal === 'Carta' && dictating && (
-                  <p className="mt-1.5 text-xs font-semibold text-red-600">Te escucho... habla ahora</p>
+                  <p className="mt-1.5 text-xs font-semibold text-red-600">Te escucho... habla; pulsa de nuevo al terminar</p>
                 )}
                 {activeModal === 'Carta' && dictError && (
                   <p className="mt-1.5 text-xs text-amber-800 bg-amber-50 border border-amber-200 rounded-xl px-3 py-2">{dictError}</p>
