@@ -624,13 +624,17 @@ export default function App() {
     };
     rec.onend = () => {
       // Si el navegador corta al pausar, reabrir mientras la persona no lo detenga.
+      // Con pequeña espera: Chrome rechaza reabrir de inmediato.
       if (wantDictation.current) {
-        try {
-          rec.start();
-        } catch {
-          wantDictation.current = false;
-          setDictating(false);
-        }
+        window.setTimeout(() => {
+          if (!wantDictation.current) return;
+          try {
+            rec.start();
+          } catch {
+            wantDictation.current = false;
+            setDictating(false);
+          }
+        }, 150);
       } else {
         setDictating(false);
       }
@@ -685,7 +689,11 @@ export default function App() {
       || recipients.find((r) => r.id === selectedRecipientId)?.name
       || '';
     if (!name) {
-      setModalError('Escribe primero el destinatario para redactar con tu voz.');
+      setModalError('Escribe primero el destinatario para convertir en carta.');
+      return;
+    }
+    if (!formContent.trim()) {
+      setModalError('Dicta con el micrófono o escribe primero unas palabras, y luego pulsa el botón.');
       return;
     }
     setIsDrafting(true);
@@ -704,7 +712,7 @@ export default function App() {
       const draft = (data?.draft || '').toString().trim();
       if (!draft) throw new Error((data?.detail || data?.error || 'sin borrador').toString());
       setFormContent(draft);
-      triggerToast('Borrador listo. Revísalo, cámbialo a tu gusto y pulsa Guardar.');
+      triggerToast('Carta lista. Escúchala con la bocina, revísala y pulsa Guardar.');
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err);
       if (/failed to send|failed to fetch|not found/i.test(msg)) {
@@ -1518,10 +1526,10 @@ export default function App() {
                     ) : (
                       <Sparkles className="w-4 h-4 text-[#D4AF37]" />
                     )}
-                    <span>{isDrafting ? 'Redactando con tu voz...' : 'Redactar con mi voz'}</span>
+                    <span>{isDrafting ? 'Convirtiendo en carta...' : 'Convertir en carta'}</span>
                   </button>
                   <p className="mt-1.5 text-[11px] text-[#6B625B] text-center">
-                    Dicta con el micrófono, pulsa y la guía redacta bonito lo que dijiste. Escúchalo con la bocina, revísalo y guarda.
+                    Dicta con el micrófono y pulsa para convertir tus palabras en una carta bonita.
                   </p>
                 </div>
               )}

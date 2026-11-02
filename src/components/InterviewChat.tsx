@@ -153,13 +153,17 @@ export default function InterviewChat() {
     };
     rec.onend = () => {
       // Si el navegador corta al pausar, reabrir mientras la persona no lo detenga.
+      // Con pequeña espera: Chrome rechaza reabrir de inmediato.
       if (wantListening.current) {
-        try {
-          rec.start();
-        } catch {
-          wantListening.current = false;
-          setListening(false);
-        }
+        window.setTimeout(() => {
+          if (!wantListening.current) return;
+          try {
+            rec.start();
+          } catch {
+            wantListening.current = false;
+            setListening(false);
+          }
+        }, 150);
       } else {
         setListening(false);
       }
