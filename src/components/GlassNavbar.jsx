@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
-import { Menu, X, Sparkles, Shield, Compass, Lock, LayoutGrid, Check } from 'lucide-react';
+import { Menu, X, Shield, Compass, Lock, LayoutGrid, Check } from 'lucide-react';
+import logoTernal from '../assets/logo-ternal.jpg';
 
 /**
  * GlassNavbar
@@ -35,8 +36,8 @@ export default function GlassNavbar({
         <div className="flex items-center justify-between h-16 sm:h-20">
           {/* Título y Marca a la izquierda */}
           <div className="flex items-center gap-3">
-            <div className="h-9 w-9 sm:h-10 sm:w-10 rounded-2xl bg-gradient-to-tr from-zinc-900 via-zinc-800 to-zinc-700 text-white flex items-center justify-center shadow-md shadow-zinc-900/10 ring-1 ring-white/40">
-              <Sparkles className="w-4 h-4 sm:w-5 sm:h-5 text-amber-300" />
+            <div className="h-9 w-9 sm:h-10 sm:w-10 rounded-2xl overflow-hidden shadow-md shadow-zinc-900/10 ring-1 ring-white/40 shrink-0">
+              <img src={logoTernal} alt="E-ternal" className="h-full w-full object-cover" />
             </div>
             <div className="flex flex-col">
               <div className="flex items-center gap-2">
