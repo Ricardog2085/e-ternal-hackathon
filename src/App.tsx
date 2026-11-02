@@ -60,15 +60,15 @@ function mapRecordToMemory(row: any): Memory {
     : (row.dateCreated || 'Reciente');
 
   const rawCondition = row.unlockCondition || row.unlock_condition || row.condicion || '';
-  const dateMatch = /^(\d{4}-\d{2}-\d{2})\s*(?:Ã‚Â·\s*(.*))?$/.exec(rawCondition.trim());
+  const dateMatch = /^(\d{4}-\d{2}-\d{2})\s*(?:·\s*(.*))?$/.exec(rawCondition.trim());
   const niceCondition = dateMatch
-    ? `Entrega: ${new Date(`${dateMatch[1]}T12:00:00`).toLocaleDateString('es-ES', { day: '2-digit', month: 'short', year: 'numeric' })}${dateMatch[2] ? ` Ã‚Â· ${dateMatch[2]}` : ''}`
+    ? `Entrega: ${new Date(`${dateMatch[1]}T12:00:00`).toLocaleDateString('es-ES', { day: '2-digit', month: 'short', year: 'numeric' })}${dateMatch[2] ? ` · ${dateMatch[2]}` : ''}`
     : (rawCondition || 'Custodia en la nube');
 
   return {
     id: String(row.id),
     recipientId: row.recipient_id || undefined,
-    title: row.title || row.titulo || 'Sin tÃƒÂ­tulo',
+    title: row.title || row.titulo || 'Sin título',
     recipient: row.recipient || row.destinatario || 'Para alguien especial',
     type: normalizedType,
     preview: previewText,
@@ -78,8 +78,8 @@ function mapRecordToMemory(row: any): Memory {
     durationOrWords: normalizedType === 'Carta' 
       ? `${previewText.split(/\s+/).filter(Boolean).length || 1} palabras` 
       : normalizedType === 'Video' 
-      ? (fileUrl ? 'Video en la bÃƒÂ³veda' : 'Video guardado') 
-      : (fileUrl ? 'Audio en la bÃƒÂ³veda' : 'Audio guardado'),
+      ? (fileUrl ? 'Video en la bóveda' : 'Video guardado') 
+      : (fileUrl ? 'Audio en la bóveda' : 'Audio guardado'),
     thumbnailColor: 'from-[#FAF4E5] to-[#EFE9DE]',
     isPrivate: true,
   };
@@ -137,13 +137,13 @@ export default function App() {
   // Client-side upload guard (UX only: real enforcement is the Storage policy)
   const validateUploadFile = (file: File, kind: 'Video' | 'Nota de Voz' | 'Carta' | null): string | null => {
     if (file.size > MAX_UPLOAD_BYTES) {
-      return `El archivo supera el lÃƒÂ­mite de ${(MAX_UPLOAD_BYTES / (1024 * 1024)).toFixed(0)} MB.`;
+      return `El archivo supera el límite de ${(MAX_UPLOAD_BYTES / (1024 * 1024)).toFixed(0)} MB.`;
     }
     const ext = (file.name.split('.').pop() || '').toLowerCase();
     if (kind !== 'Carta') {
       const allowed = kind === 'Nota de Voz' ? AUDIO_EXTENSIONS : VIDEO_EXTENSIONS;
       if (!allowed.includes(ext)) {
-        return `Formato no permitido (.${ext || 'sin extensiÃƒÂ³n'}). Usa: ${allowed.join(', ')}.`;
+        return `Formato no permitido (.${ext || 'sin extensión'}). Usa: ${allowed.join(', ')}.`;
       }
       if (file.type) {
         const expected = kind === 'Nota de Voz' ? 'audio/' : 'video/';
@@ -165,7 +165,7 @@ export default function App() {
       if (error || !data?.signedUrl) throw error || new Error('sin URL firmada');
       return data.signedUrl;
     } catch (err) {
-      console.warn('No se pudo firmar la URL privada, usando fallback pÃƒÂºblico:', err);
+      console.warn('No se pudo firmar la URL privada, usando fallback público:', err);
       return supabase.storage.from('vault').getPublicUrl(stored).data.publicUrl;
     }
   };
@@ -192,7 +192,7 @@ export default function App() {
         .select('*')
         .eq('user_id', ownerId)
         .order('id', { ascending: false });
-      // TransiciÃƒÂ³n: si la columna user_id aÃƒÂºn no existe, leer sin filtro
+      // Transición: si la columna user_id aún no existe, leer sin filtro
       if (error && /user_id|column/i.test(error.message || '')) {
         console.warn('Columna user_id ausente; leyendo sin filtro por usuario (aplica supabase/security-setup.md).');
         ({ data, error } = await supabase
@@ -212,8 +212,8 @@ export default function App() {
         setMemories(resolved);
       }
     } catch (err: unknown) {
-      const message = err instanceof Error ? err.message : 'Error desconocido de conexiÃƒÂ³n';
-      console.error('Error de conexiÃƒÂ³n:', err);
+      const message = err instanceof Error ? err.message : 'Error desconocido de conexión';
+      console.error('Error de conexión:', err);
       setFetchError(message);
     } finally {
       setLoading(false);
@@ -256,14 +256,14 @@ export default function App() {
     try {
       const { error } = await supabase.auth.signOut();
       if (error) {
-        console.error('Error al cerrar sesiÃƒÂ³n:', error);
-        triggerToast(`Error al cerrar sesiÃƒÂ³n: ${error.message}`);
+        console.error('Error al cerrar sesión:', error);
+        triggerToast(`Error al cerrar sesión: ${error.message}`);
       } else {
         setMemories([]);
-        triggerToast('BÃƒÂ³veda cerrada en paz.');
+        triggerToast('Bóveda cerrada en paz.');
       }
     } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : 'Error al cerrar sesiÃƒÂ³n';
+      const msg = err instanceof Error ? err.message : 'Error al cerrar sesión';
       triggerToast(`Error: ${msg}`);
     }
   };
@@ -355,14 +355,14 @@ export default function App() {
 
     const ownerId = session?.user?.id;
     if (!ownerId) {
-      const msg = 'Tu sesiÃƒÂ³n expirÃƒÂ³. Ingresa nuevamente para guardar recuerdos.';
+      const msg = 'Tu sesión expiró. Ingresa nuevamente para guardar recuerdos.';
       setModalError(msg);
       triggerToast(msg);
       return;
     }
 
     if (!formTitle || !formRecipient) {
-      const msg = 'Por favor completa al menos el tÃƒÂ­tulo y el destinatario.';
+      const msg = 'Por favor completa al menos el título y el destinatario.';
       setModalError(msg);
       triggerToast(msg);
       return;
@@ -415,14 +415,14 @@ export default function App() {
 
         // Guardar la ruta privada; la URL firmada se resuelve al leer
         uploadedFilePath = storagePath;
-        console.log('Archivo subido con ÃƒÂ©xito al bucket vault:', uploadedFilePath);
+        console.log('Archivo subido con éxito al bucket vault:', uploadedFilePath);
         setIsUploadingFile(false);
       }
 
       // 2. Insertar en tabla memories con file_url
       console.log('Insertando recuerdo en tabla memories...', { formTitle, formRecipient, activeModal, uploadedFilePath });
       const conditionValue = formDate
-        ? `${formDate}${formCondition && formCondition !== 'Entrega programada: Fecha especial' ? ` Ã‚Â· ${formCondition}` : ''}`
+        ? `${formDate}${formCondition && formCondition !== 'Entrega programada: Fecha especial' ? ` · ${formCondition}` : ''}`
         : formCondition;
       const { data, error } = await insertMemoryToSupabase(
         ownerId,
@@ -461,7 +461,7 @@ export default function App() {
       setFormContent('');
       setSelectedFile(null);
       setModalError(null);
-      triggerToast(`Recuerdo para ${formRecipient} resguardado exitosamente en la bÃƒÂ³veda celestial.`);
+      triggerToast(`Recuerdo para ${formRecipient} resguardado exitosamente en la bóveda celestial.`);
     } catch (err: unknown) {
       console.error('Error inesperado durante la subida o guardado:', err);
       const message = err instanceof Error ? err.message : String(err);
@@ -478,7 +478,7 @@ export default function App() {
   const handleDelete = async (id: string, title: string) => {
     const ownerId = session?.user?.id;
     if (!ownerId) {
-      triggerToast('Tu sesiÃƒÂ³n expirÃƒÂ³. Ingresa nuevamente.');
+      triggerToast('Tu sesión expiró. Ingresa nuevamente.');
       return;
     }
     setDeletingId(id);
@@ -488,7 +488,7 @@ export default function App() {
         .delete()
         .eq('id', id)
         .eq('user_id', ownerId);
-      // TransiciÃƒÂ³n: si la columna user_id aÃƒÂºn no existe, borrar solo por id
+      // Transición: si la columna user_id aún no existe, borrar solo por id
       if (error && /user_id|column/i.test(error.message || '')) {
         console.warn('Columna user_id ausente; borrando sin filtro por usuario (aplica supabase/security-setup.md).');
         ({ error } = await supabase
@@ -503,7 +503,7 @@ export default function App() {
       } else {
         // Immediate UI update
         setMemories((prev) => prev.filter((m) => m.id !== id));
-        triggerToast(`"${title}" ha sido eliminado de la bÃƒÂ³veda.`);
+        triggerToast(`"${title}" ha sido eliminado de la bóveda.`);
       }
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : 'Error al eliminar';
@@ -514,7 +514,7 @@ export default function App() {
     }
   };
 
-  // La guÃ­a redacta un borrador con lo que sabe de la familia; la persona
+  // La guía redacta un borrador con lo que sabe de la familia; la persona
   // lo revisa, lo cambia a su gusto y lo guarda como carta normal.
   const handleDraftLetter = async () => {
     const name = formRecipient.trim()
@@ -534,11 +534,11 @@ export default function App() {
       const draft = (data?.draft || '').toString().trim();
       if (!draft) throw new Error((data?.detail || data?.error || 'sin borrador').toString());
       setFormContent(draft);
-      triggerToast('Borrador listo. RevÃ­salo, cÃ¡mbialo a tu gusto y pulsa Guardar.');
+      triggerToast('Borrador listo. Revísalo, cámbialo a tu gusto y pulsa Guardar.');
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err);
       if (/failed to send|failed to fetch|not found/i.test(msg)) {
-        setModalError('La guÃ­a aÃºn no estÃ¡ desplegada en Supabase (redespliega la funciÃ³n interview).');
+        setModalError('La guía aún no está desplegada en Supabase (redespliega la función interview).');
       } else {
         setModalError(`No pude redactar: ${msg}`);
       }
@@ -597,7 +597,7 @@ export default function App() {
 
         <GlassNavbar
           title="E-ternal"
-          subtitle="BÃƒÂ³veda Digital"
+          subtitle="Bóveda Digital"
           activeView="glassmorphism"
           onSelectView={(v: string) => setActiveView(v === 'vault' ? 'vault' : 'glass')}
         />
@@ -644,7 +644,7 @@ export default function App() {
   // Intelligent initials: 'Ricardo Castro' -> 'RC'. If no name set, first two letters of email.
   const userInitials = computeInitials(userMetadataFullName, userEmail);
 
-  // PestaÃƒÂ±as: filtrar recuerdos por tipo (Videos / Notas de voz / Cartas)
+  // Pestañas: filtrar recuerdos por tipo (Videos / Notas de voz / Cartas)
   const visibleMemories = activeTab === 'todos' ? memories : memories.filter((m) => m.type === activeTab);
   const tabCounts = {
     todos: memories.length,
@@ -666,7 +666,7 @@ export default function App() {
       {/* Top Glass Navigation */}
       <GlassNavbar
         title="E-ternal"
-        subtitle={`Santuario Ã¢â‚¬Â¢ ${userDisplayName}`}
+        subtitle={`Santuario • ${userDisplayName}`}
         activeView="vault"
         onSelectView={(v: string) => setActiveView(v === 'vault' ? 'vault' : 'glass')}
       />
@@ -723,15 +723,15 @@ export default function App() {
                 </div>
               </button>
 
-              {/* BotÃƒÂ³n discreto de cierre de sesiÃƒÂ³n */}
+              {/* Botón discreto de cierre de sesión */}
               <button
                 type="button"
                 onClick={handleSignOut}
-                title="Cerrar sesiÃƒÂ³n sagrada"
+                title="Cerrar sesión sagrada"
                 className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-medium text-[#6B625B] hover:text-[#2C241E] hover:bg-[#FAF4E5] border border-transparent hover:border-[#E8D8A6]/70 transition-all cursor-pointer"
               >
                 <LogOut className="w-3.5 h-3.5 text-[#D4AF37]" />
-                <span className="hidden sm:inline">Cerrar SesiÃƒÂ³n</span>
+                <span className="hidden sm:inline">Cerrar Sesión</span>
               </button>
             </div>
           </div>
@@ -746,10 +746,10 @@ export default function App() {
           <div className="p-4 rounded-xl bg-amber-50/90 border border-amber-200 text-amber-900 flex items-start gap-3 text-sm">
             <AlertCircle className="w-5 h-5 text-amber-600 shrink-0 mt-0.5" />
             <div className="flex-1">
-              <p className="font-semibold text-amber-950">Aviso de conexiÃƒÂ³n con Supabase</p>
+              <p className="font-semibold text-amber-950">Aviso de conexión con Supabase</p>
               <p className="text-xs text-amber-800 mt-1">
                 {fetchError.includes('relation') || fetchError.includes('memories') 
-                  ? 'AsegÃƒÂºrate de haber creado la tabla "memories" en tu panel de Supabase y de tener activadas las polÃƒÂ­ticas de acceso (RLS) para SELECT, INSERT y DELETE.'
+                  ? 'Asegúrate de haber creado la tabla "memories" en tu panel de Supabase y de tener activadas las políticas de acceso (RLS) para SELECT, INSERT y DELETE.'
                   : fetchError}
               </p>
               <button
@@ -758,7 +758,7 @@ export default function App() {
                 }}
                 className="mt-2 text-xs font-semibold underline hover:text-amber-950"
               >
-                Reintentar conexiÃƒÂ³n
+                Reintentar conexión
               </button>
             </div>
           </div>
@@ -771,7 +771,7 @@ export default function App() {
           <div className="relative z-10 max-w-2xl">
             <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-[#FAF4E5] border border-[#E8D8A6] text-[#2C241E] text-xs font-medium mb-4">
               <Sparkles className="w-3.5 h-3.5 text-[#D4AF37]" />
-              <span>Espacio Privado e ÃƒÂntimo</span>
+              <span>Espacio Privado e Íntimo</span>
             </div>
 
             <h1 className="text-3xl sm:text-4xl md:text-5xl font-serif font-bold text-[#2C241E] tracking-tight leading-[1.15]">
@@ -779,7 +779,7 @@ export default function App() {
             </h1>
 
             <p className="mt-3 sm:mt-4 text-[#6B625B] text-sm sm:text-base leading-relaxed">
-              Este es tu feed personal de custodia conectado en tiempo real. Cada pensamiento, palabra y mirada grabada aquÃƒÂ­ permanecerÃƒÂ¡ protegida en Supabase y serÃƒÂ¡ entregada a quienes amas exactamente cuando deba ser.
+              Este es tu feed personal de custodia conectado en tiempo real. Cada pensamiento, palabra y mirada grabada aquí permanecerá protegida en Supabase y será entregada a quienes amas exactamente cuando deba ser.
             </p>
 
             <div className="mt-6 flex flex-wrap items-center gap-4 text-xs text-[#6B625B] pt-4 border-t border-[#EFE9DE]">
@@ -787,7 +787,7 @@ export default function App() {
                 <Lock className="w-3.5 h-3.5 text-[#D4AF37]" />
                 <span>Base de Datos Segura</span>
               </div>
-              <span className="text-[#D4AF37]">Ã¢â‚¬Â¢</span>
+              <span className="text-[#D4AF37]">•</span>
               <div className="flex items-center gap-1.5">
                 <Heart className="w-3.5 h-3.5 text-[#D4AF37]" />
                 <span>{loading ? 'Cargando...' : `${memories.length} recuerdos en custodia`}</span>
@@ -796,7 +796,7 @@ export default function App() {
           </div>
         </section>
 
-        {/* 2. Caja superior de creaciÃƒÂ³n con 3 botones visibles */}
+        {/* 2. Caja superior de creación con 3 botones visibles */}
         <section className="bg-[#FFFFFF] rounded-2xl border border-[#EFE9DE] shadow-xs p-5 sm:p-6 transition-all hover:border-[#E8D8A6]">
           <div className="flex items-start gap-3.5">
             <button
@@ -813,7 +813,7 @@ export default function App() {
                 onClick={() => handleOpenModal('Carta')}
                 className="w-full bg-[#FDFBF7] border border-[#EFE9DE] rounded-xl px-4 py-3 text-sm text-[#6B625B] hover:border-[#D4AF37]/60 hover:bg-[#FFFFFF] transition-all cursor-pointer flex items-center justify-between"
               >
-                <span>Ã‚Â¿QuÃƒÂ© legado, lecciÃƒÂ³n o memoria deseas confiar hoy a Supabase?</span>
+                <span>¿Qué legado, lección o memoria deseas confiar hoy a Supabase?</span>
                 <span className="text-xs bg-[#FAF4E5] text-[#D4AF37] px-2.5 py-1 rounded-md font-semibold border border-[#E8D8A6]/60">
                   Preservar
                 </span>
@@ -860,7 +860,7 @@ export default function App() {
           </div>
         </section>
 
-        {/* PestaÃƒÂ±as por tipo de recuerdo */}
+        {/* Pestañas por tipo de recuerdo */}
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5" role="tablist" aria-label="Filtrar recuerdos por tipo">
           {([
             { id: 'todos', label: 'Todos', icon: LayoutGrid },
@@ -926,16 +926,16 @@ export default function App() {
             <Heart className="w-10 h-10 text-[#D4AF37]/50 mx-auto mb-3" />
             <h3 className="font-serif text-lg font-bold text-[#2C241E]">
               {activeTab === 'todos'
-                ? 'Tu bÃƒÂ³veda en la nube estÃƒÂ¡ vacÃƒÂ­a'
+                ? 'Tu bóveda en la nube está vacía'
                 : activeTab === 'Video'
-                  ? 'Sin videos todavÃƒÂ­a'
+                  ? 'Sin videos todavía'
                   : activeTab === 'Nota de Voz'
-                    ? 'Sin notas de voz todavÃƒÂ­a'
-                    : 'Sin cartas todavÃƒÂ­a'}
+                    ? 'Sin notas de voz todavía'
+                    : 'Sin cartas todavía'}
             </h3>
             <p className="text-sm text-[#6B625B] mt-1 max-w-sm mx-auto">
               {activeTab === 'todos'
-                ? 'AÃƒÂºn no tienes recuerdos guardados en Supabase. Utiliza los botones superiores para crear tu primer recuerdo perpetuo.'
+                ? 'Aún no tienes recuerdos guardados en Supabase. Utiliza los botones superiores para crear tu primer recuerdo perpetuo.'
                 : 'Usa los botones superiores para crear tu primer recuerdo de este tipo.'}
             </p>
           </div>
@@ -951,7 +951,7 @@ export default function App() {
                   </h3>
                   <p className="text-xs sm:text-sm text-[#6B625B] mb-4">
                     {own.length} {own.length === 1 ? 'recuerdo' : 'recuerdos'}
-                    {r.relation ? ` Ã¢â‚¬Â¢ ${r.relation}` : ''}
+                    {r.relation ? ` • ${r.relation}` : ''}
                   </p>
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
                     {own.map((memory) => (
@@ -973,7 +973,7 @@ export default function App() {
                   Sin asignar
                 </h3>
                 <p className="text-xs sm:text-sm text-[#6B625B] mb-4">
-                  Recuerdos sin destinatario de la bÃƒÂ³veda
+                  Recuerdos sin destinatario de la bóveda
                 </p>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
                   {visibleMemories.filter((m) => !m.recipientId).map((memory) => (
@@ -993,7 +993,7 @@ export default function App() {
 
         {!recipientsReady && (
           <div className="p-4 rounded-xl bg-amber-50/90 border border-amber-200 text-amber-900 text-sm">
-            Falta aplicar la guÃƒÂ­a <span className="font-mono text-xs">supabase/vault-delivery-setup.sql</span> en tu
+            Falta aplicar la guía <span className="font-mono text-xs">supabase/vault-delivery-setup.sql</span> en tu
             panel de Supabase para activar destinatarios, entrega y entrevista.
           </div>
         )}
@@ -1005,7 +1005,7 @@ export default function App() {
               Entrega y destinatarios
             </h2>
             <p className="text-xs sm:text-sm text-[#6B625B]">
-              QuiÃƒÂ©n recibe tus recuerdos por WhatsApp y quiÃƒÂ©n custodia la entrega
+              Quién recibe tus recuerdos por WhatsApp y quién custodia la entrega
             </p>
           </div>
           <DeliveryPanel
@@ -1023,7 +1023,7 @@ export default function App() {
               Entrevista del legado
             </h2>
             <p className="text-xs sm:text-sm text-[#6B625B]">
-              Tu guÃƒÂ­a te pregunta y memoriza a tu familia
+              Tu guía te pregunta y memoriza a tu familia
             </p>
           </div>
           <InterviewChat />
@@ -1033,13 +1033,13 @@ export default function App() {
         <footer className="text-center pt-8 pb-12 border-t border-[#EFE9DE] space-y-2">
           <div className="flex items-center justify-center gap-2 text-xs text-[#D4AF37] uppercase tracking-widest font-semibold">
             <span>E-TERNAL</span>
-            <span>Ã¢â‚¬Â¢</span>
+            <span>•</span>
             <span>Privacidad Absoluta</span>
-            <span>Ã¢â‚¬Â¢</span>
+            <span>•</span>
             <span>Supabase Cloud Database</span>
           </div>
           <p className="text-xs text-[#6B625B]">
-            Tus recuerdos se encuentran resguardados en Supabase bajo estÃƒÂ¡ndares de mÃƒÂ¡xima seguridad y confidencialidad.
+            Tus recuerdos se encuentran resguardados en Supabase bajo estándares de máxima seguridad y confidencialidad.
           </p>
         </footer>
       </main>
@@ -1068,7 +1068,7 @@ export default function App() {
             </div>
 
             <p className="text-xs text-[#6B625B] mb-5">
-              Este recuerdo se guardarÃƒÂ¡ directamente en tu base de datos en la nube.
+              Este recuerdo se guardará directamente en tu base de datos en la nube.
             </p>
 
             {/* Mensaje de error visual en la interfaz si la subida a Storage o el INSERT en la tabla fallan */}
@@ -1090,16 +1090,16 @@ export default function App() {
             <form onSubmit={handleSaveMemory} className="space-y-4 text-left">
               <div>
                 <label className="block text-xs font-semibold text-[#2C241E] uppercase tracking-wider mb-1">
-                  TÃƒÂ­tulo del Recuerdo *
+                  Título del Recuerdo *
                 </label>
                 <input
                   type="text"
                   required
                   placeholder={
                     activeModal === 'Video'
-                      ? 'Ej: Para el dÃƒÂ­a de tu boda...'
+                      ? 'Ej: Para el día de tu boda...'
                       : activeModal === 'Nota de Voz'
-                      ? 'Ej: Una lecciÃƒÂ³n que nunca debes olvidar...'
+                      ? 'Ej: Una lección que nunca debes olvidar...'
                       : 'Ej: Carta a mis nietos en el futuro...'
                   }
                   value={formTitle}
@@ -1115,7 +1115,7 @@ export default function App() {
                 <input
                   type="text"
                   required
-                  placeholder="Ej: SofÃƒÂ­a (Hija), Mateo (Hijo), Elena (Esposa)..."
+                  placeholder="Ej: Sofía (Hija), Mateo (Hijo), Elena (Esposa)..."
                   value={formRecipient}
                   onChange={(e) => setFormRecipient(e.target.value)}
                   className="w-full px-3.5 py-2.5 rounded-xl bg-[#FDFBF7] border border-[#EFE9DE] focus:border-[#D4AF37] focus:ring-1 focus:ring-[#D4AF37] outline-hidden text-sm text-[#2C241E]"
@@ -1124,7 +1124,7 @@ export default function App() {
 
               <div>
                 <label className="block text-xs font-semibold text-[#2C241E] uppercase tracking-wider mb-1">
-                  Destinatario de la bÃƒÂ³veda (opcional)
+                  Destinatario de la bóveda (opcional)
                 </label>
                 <select
                   value={selectedRecipientId || ''}
@@ -1145,7 +1145,7 @@ export default function App() {
                 </select>
               </div>
 
-              {/* Selector o GrabaciÃƒÂ³n en Vivo para Video y Nota de Voz */}
+              {/* Selector o Grabación en Vivo para Video y Nota de Voz */}
               {activeModal !== 'Carta' && (
                 <div>
                   <div className="flex items-center justify-between mb-2">
@@ -1212,7 +1212,7 @@ export default function App() {
                             <div className="truncate">
                               <p className="text-xs font-semibold text-[#2C241E] truncate">{selectedFile.name}</p>
                               <p className="text-[11px] text-[#6B625B]">
-                                {(selectedFile.size / (1024 * 1024)).toFixed(2)} MB Ã¢â‚¬Â¢ Listo para la bÃƒÂ³veda
+                                {(selectedFile.size / (1024 * 1024)).toFixed(2)} MB • Listo para la bóveda
                               </p>
                             </div>
                           </div>
@@ -1235,7 +1235,7 @@ export default function App() {
                           </div>
                           <div>
                             <p className="text-xs font-semibold text-[#2C241E]">
-                              Seleccionar {activeModal === 'Video' ? 'video celestial' : 'grabaciÃƒÂ³n de voz'}
+                              Seleccionar {activeModal === 'Video' ? 'video celestial' : 'grabación de voz'}
                             </p>
                             <p className="text-[11px] text-[#6B625B] mt-0.5">
                               {activeModal === 'Video' 
@@ -1252,7 +1252,7 @@ export default function App() {
 
               <div>
                 <label className="block text-xs font-semibold text-[#2C241E] uppercase tracking-wider mb-1">
-                  Fecha de entrega (dÃƒÂ­a en que se libera el recuerdo)
+                  Fecha de entrega (día en que se libera el recuerdo)
                 </label>
                 <input
                   type="date"
@@ -1264,11 +1264,11 @@ export default function App() {
 
               <div>
                 <label className="block text-xs font-semibold text-[#2C241E] uppercase tracking-wider mb-1">
-                  CondiciÃƒÂ³n de Entrega o Fecha
+                  Condición de Entrega o Fecha
                 </label>
                 <input
                   type="text"
-                  placeholder="Ej: Al cumplir 18 aÃƒÂ±os / En caso de partida / Fecha: 2030..."
+                  placeholder="Ej: Al cumplir 18 años / En caso de partida / Fecha: 2030..."
                   value={formCondition}
                   onChange={(e) => setFormCondition(e.target.value)}
                   className="w-full px-3.5 py-2.5 rounded-xl bg-[#FDFBF7] border border-[#EFE9DE] focus:border-[#D4AF37] focus:ring-1 focus:ring-[#D4AF37] outline-hidden text-sm text-[#2C241E]"
@@ -1277,14 +1277,14 @@ export default function App() {
 
               <div>
                 <label className="block text-xs font-semibold text-[#2C241E] uppercase tracking-wider mb-1">
-                  {activeModal === 'Carta' ? 'Contenido de la Carta / Contexto' : 'Contexto o DescripciÃƒÂ³n (Opcional)'}
+                  {activeModal === 'Carta' ? 'Contenido de la Carta / Contexto' : 'Contexto o Descripción (Opcional)'}
                 </label>
                 <textarea
                   rows={4}
                   placeholder={
                     activeModal === 'Carta'
-                      ? 'Escribe tus palabras aquÃƒÂ­...'
-                      : 'Describe brevemente el contexto de esta grabaciÃƒÂ³n...'
+                      ? 'Escribe tus palabras aquí...'
+                      : 'Describe brevemente el contexto de esta grabación...'
                   }
                   value={formContent}
                   onChange={(e) => setFormContent(e.target.value)}
@@ -1308,7 +1308,7 @@ export default function App() {
                     <span>{isDrafting ? 'Redactando con tu voz...' : 'Redactar con mi voz'}</span>
                   </button>
                   <p className="mt-1.5 text-[11px] text-[#6B625B] text-center">
-                    La guÃ­a escribe un borrador con lo que sabe de tu familia. TÃº lo revisas y lo guardas.
+                    La guía escribe un borrador con lo que sabe de tu familia. Tú lo revisas y lo guardas.
                   </p>
                 </div>
               )}
@@ -1333,7 +1333,7 @@ export default function App() {
                       <span>
                         {isUploadingFile
                           ? 'Subiendo archivo celestial...'
-                          : 'Guardando en la bÃƒÂ³veda...'}
+                          : 'Guardando en la bóveda...'}
                       </span>
                     </>
                   ) : (
