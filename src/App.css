@@ -1,0 +1,69 @@
+/* Custom subtle animation utilities */
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.animate-fade-in {
+  animation: fadeIn 0.5s ease-out forwards;
+}
+
+/* Celestial breathing animations for divine ambient glow */
+@keyframes celestialBreathe {
+
+  0%,
+  100% {
+    opacity: 0.35;
+    transform: scale(1) translate(0px, 0px);
+  }
+
+  50% {
+    opacity: 0.7;
+    transform: scale(1.12) translate(8px, -10px);
+  }
+}
+
+@keyframes celestialBreatheSlow {
+
+  0%,
+  100% {
+    opacity: 0.25;
+    transform: scale(1) translate(0px, 0px);
+  }
+
+  50% {
+    opacity: 0.6;
+    transform: scale(1.18) translate(-12px, 8px);
+  }
+}
+
+@keyframes celestialMonogramGlow {
+
+  0%,
+  100% {
+    box-shadow: 0 0 20px rgba(212, 175, 55, 0.2), 0 0 40px rgba(212, 175, 55, 0.08);
+  }
+
+  50% {
+    box-shadow: 0 0 35px rgba(212, 175, 55, 0.45), 0 0 70px rgba(212, 175, 55, 0.2);
+  }
+}
+
+.animate-celestial-breathe {
+  animation: celestialBreathe 9s ease-in-out infinite;
+}
+
+.animate-celestial-breathe-slow {
+  animation: celestialBreatheSlow 13s ease-in-out infinite;
+}
+
+.animate-celestial-glow {
+  animation: celestialMonogramGlow 5s ease-in-out infinite;
+}
