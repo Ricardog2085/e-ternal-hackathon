@@ -55,6 +55,7 @@ export default function InterviewChat() {
   const scrollRef = useRef<HTMLDivElement | null>(null);
   const recognitionRef = useRef<SpeechRecognitionInstance | null>(null);
   const wantListening = useRef(false);
+  const [conversing, setConversing] = useState(false);
 
   useEffect(() => {
     const el = scrollRef.current;
@@ -97,8 +98,29 @@ export default function InterviewChat() {
     speakNow(text);
   };
 
+  // Habla y avisa al terminar (para reabrir el micro en conversación).
+  const speakThen = (text: string, after: () => void) => {
+    if (!ttsSupported || !text.trim()) {
+      after();
+      return;
+    }
+    try {
+      const synth = window.speechSynthesis;
+      synth.cancel();
+      const utter = new SpeechSynthesisUtterance(text);
+      utter.lang = 'es-ES';
+      utter.rate = 0.95;
+      utter.onend = () => after();
+      utter.onerror = () => after();
+      synth.speak(utter);
+    } catch {
+      after();
+    }
+  };
+
   const stopListening = () => {
     wantListening.current = false;
+    setConversing(false);
     try {
       recognitionRef.current?.stop();
     } catch {
@@ -107,14 +129,20 @@ export default function InterviewChat() {
     setListening(false);
   };
 
-  const toggleListen = () => {
+  // Pausa momentánea (la guía piensa o habla): la conversación sigue abierta.
+  const pauseListening = () => {
+    try {
+      recognitionRef.current?.stop();
+    } catch {
+      /* sin micrófono activo */
+    }
+    setListening(false);
+  };
+
+  // Abre el micrófono: primera pulsación o reanudación de la conversación.
+  const openMic = () => {
     const Ctor = getSpeechRecognition();
     if (!Ctor) return;
-    setMicError(null);
-    if (listening) {
-      stopListening();
-      return;
-    }
     try {
       if (ttsSupported) window.speechSynthesis.cancel();
     } catch {
@@ -138,11 +166,12 @@ export default function InterviewChat() {
       const code = (event as { error?: string })?.error || '';
       if (code === 'not-allowed' || code === 'service-not-allowed' || code === 'audio-capture') {
         wantListening.current = false;
+        setConversing(false);
       }
       if (code === 'not-allowed' || code === 'service-not-allowed') {
         setMicError('El navegador bloqueó el micrófono: pulsa el candado de la barra de dirección, permite el micrófono y recarga la página.');
       } else if (code === 'no-speech') {
-        setMicError('No te escuché: acércate al micrófono y vuelve a pulsar.');
+        setMicError('No te escuché: acércate al micrófono y sigue hablando.');
       } else if (code === 'audio-capture') {
         setMicError('No encontré ningún micrófono en este equipo.');
       } else if (code === 'network') {
@@ -152,7 +181,7 @@ export default function InterviewChat() {
       }
     };
     rec.onend = () => {
-      // Si el navegador corta al pausar, reabrir mientras la persona no lo detenga.
+      // Si el navegador corta al pausar, reabrir mientras la conversación siga abierta.
       // Con pequeña espera: Chrome rechaza reabrir de inmediato.
       if (wantListening.current) {
         window.setTimeout(() => {
@@ -161,6 +190,7 @@ export default function InterviewChat() {
             rec.start();
           } catch {
             wantListening.current = false;
+            setConversing(false);
             setListening(false);
           }
         }, 150);
@@ -170,20 +200,32 @@ export default function InterviewChat() {
     };
     recognitionRef.current = rec;
     wantListening.current = true;
+    setConversing(true);
     try {
       rec.start();
       setListening(true);
     } catch {
       wantListening.current = false;
+      setConversing(false);
       setListening(false);
       setMicError('No pude abrir el micrófono. Revisa el permiso en el candado de la barra de dirección.');
     }
   };
 
+  const toggleListen = () => {
+    if (!getSpeechRecognition()) return;
+    setMicError(null);
+    if (wantListening.current) {
+      stopListening();
+      return;
+    }
+    openMic();
+  };
+
   const send = async () => {
     const text = draft.trim();
     if (!text || sending) return;
-    stopListening();
+    pauseListening();
     setDraft('');
     setSavedNote(null);
     setFailed(false);
@@ -203,7 +245,18 @@ export default function InterviewChat() {
       const reply = (data?.reply || '').toString() || 'Perdona, no pude responder. Inténtalo de nuevo.';
       const saved = Array.isArray(data?.saved) ? data.saved.filter(Boolean) : [];
       setMessages((prev) => [...prev, { role: 'assistant', content: reply }]);
-      speak(reply);
+      if (wantListening.current) {
+        // Conversación abierta: al terminar de hablar la guía, reabrir el micro.
+        if (voiceReply) {
+          speakThen(reply, () => {
+            if (wantListening.current) openMic();
+          });
+        } else {
+          openMic();
+        }
+      } else {
+        speak(reply);
+      }
       if (saved.length > 0) {
         setSavedNote(`He guardado en tu perfil: ${saved.join(', ')}`);
       }
@@ -316,17 +369,24 @@ export default function InterviewChat() {
         </p>
       )}
 
+      {conversing && (
+        <p className="mx-5 sm:mx-6 mb-3 px-3.5 py-2 rounded-xl bg-[#FAF4E5] border border-[#D4AF37]/50 text-[#2C241E] text-xs">
+          {listening
+            ? 'Conversación abierta: habla, pulsa Enviar, y sigue. Pulsa el micrófono para terminar.'
+            : 'La guía está respondiendo... tu turno sigue.'}
+        </p>
+      )}
+
       <div className="px-5 sm:px-6 pb-5 flex items-center gap-2.5">
         {micSupported && (
           <button
             type="button"
             onClick={toggleListen}
-            disabled={sending}
-            title={listening ? 'Dejar de escuchar' : 'Dictar con tu voz'}
-            aria-label={listening ? 'Dejar de escuchar' : 'Dictar con tu voz'}
-            aria-pressed={listening}
+            title={conversing ? 'Terminar conversación' : 'Hablar con la guía'}
+            aria-label={conversing ? 'Terminar conversación' : 'Hablar con la guía'}
+            aria-pressed={conversing}
             className={`w-12 h-12 rounded-xl flex items-center justify-center shadow-sm transition-all cursor-pointer disabled:opacity-60 disabled:cursor-not-allowed shrink-0 ${
-              listening
+              conversing
                 ? 'bg-red-500 hover:bg-red-600 text-white animate-pulse'
                 : 'bg-[#FDFBF7] border border-[#EFE9DE] hover:border-[#D4AF37]/60 text-[#2C241E]'
             }`}
@@ -339,7 +399,7 @@ export default function InterviewChat() {
           value={draft}
           onChange={(e) => setDraft(e.target.value)}
           onKeyDown={handleKey}
-          placeholder={listening ? 'Te escucho... pulsa de nuevo al terminar' : 'Escribe o pulsa el micrófono...'}
+          placeholder={conversing ? 'Conversación abierta: habla y pulsa Enviar' : 'Escribe o pulsa el micrófono...'}
           disabled={sending}
           className="flex-1 px-4 py-3 rounded-xl bg-[#FDFBF7] border border-[#EFE9DE] focus:border-[#D4AF37] focus:ring-1 focus:ring-[#D4AF37] outline-hidden text-[15px] text-[#2C241E] disabled:opacity-60"
         />
