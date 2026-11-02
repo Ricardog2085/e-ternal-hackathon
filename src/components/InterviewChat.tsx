@@ -56,6 +56,7 @@ export default function InterviewChat() {
   const recognitionRef = useRef<SpeechRecognitionInstance | null>(null);
   const wantListening = useRef(false);
   const [conversing, setConversing] = useState(false);
+  const micStreamRef = useRef<MediaStream | null>(null);
 
   useEffect(() => {
     const el = scrollRef.current;
@@ -66,6 +67,7 @@ export default function InterviewChat() {
   useEffect(() => {
     return () => {
       wantListening.current = false;
+      releaseMic();
       try {
         recognitionRef.current?.stop();
       } catch {
@@ -121,6 +123,7 @@ export default function InterviewChat() {
   const stopListening = () => {
     wantListening.current = false;
     setConversing(false);
+    releaseMic();
     try {
       recognitionRef.current?.stop();
     } catch {
@@ -139,10 +142,50 @@ export default function InterviewChat() {
     setListening(false);
   };
 
+  // Retiene el permiso del micrófono durante toda la conversación:
+  // sin esto, Chrome pregunta en cada reapertura.
+  const holdMic = async (): Promise<boolean> => {
+    if (micStreamRef.current) return true;
+    try {
+      micStreamRef.current = await navigator.mediaDevices.getUserMedia({ audio: true });
+      return true;
+    } catch {
+      return false;
+    }
+  };
+
+  function releaseMic() {
+    try {
+      micStreamRef.current?.getTracks().forEach((t) => {
+        try {
+          t.stop();
+        } catch {
+          /* pista ya cerrada */
+        }
+      });
+    } catch {
+      /* sin micrófono retenido */
+    }
+    micStreamRef.current = null;
+  }
+
   // Abre el micrófono: primera pulsación o reanudación de la conversación.
-  const openMic = () => {
+  const openMic = async () => {
     const Ctor = getSpeechRecognition();
     if (!Ctor) return;
+    const held = await holdMic();
+    if (!held) {
+      wantListening.current = false;
+      setConversing(false);
+      setMicError('El navegador bloqueó el micrófono: pulsa el candado de la barra de dirección, permite el micrófono y recarga.');
+      return;
+    }
+    if (!wantListening.current) {
+      // Se detuvo mientras pedía permiso: soltar y salir.
+      releaseMic();
+      setConversing(false);
+      return;
+    }
     try {
       if (ttsSupported) window.speechSynthesis.cancel();
     } catch {
@@ -219,7 +262,9 @@ export default function InterviewChat() {
       stopListening();
       return;
     }
-    openMic();
+    wantListening.current = true;
+    setConversing(true);
+    void openMic();
   };
 
   const send = async () => {
@@ -249,10 +294,10 @@ export default function InterviewChat() {
         // Conversación abierta: al terminar de hablar la guía, reabrir el micro.
         if (voiceReply) {
           speakThen(reply, () => {
-            if (wantListening.current) openMic();
+            if (wantListening.current) void openMic();
           });
         } else {
-          openMic();
+          void openMic();
         }
       } else {
         speak(reply);

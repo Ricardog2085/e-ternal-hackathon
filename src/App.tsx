@@ -145,6 +145,7 @@ export default function App() {
   const [draftTtsSupported] = useState(() => typeof window !== 'undefined' && 'speechSynthesis' in window);
   const dictationRef = useRef<DictationRecognition | null>(null);
   const wantDictation = useRef(false);
+  const dictMicStreamRef = useRef<MediaStream | null>(null);
   const [deletingId, setDeletingId] = useState<string | null>(null);
 
   // Form states for creating a new memory modal
@@ -551,6 +552,7 @@ export default function App() {
   useEffect(() => {
     if (activeModal) return;
     wantDictation.current = false;
+    releaseDictMic();
     try {
       dictationRef.current?.stop();
     } catch {
@@ -570,6 +572,7 @@ export default function App() {
 
   const stopDictation = () => {
     wantDictation.current = false;
+    releaseDictMic();
     try {
       dictationRef.current?.stop();
     } catch {
@@ -578,8 +581,35 @@ export default function App() {
     setDictating(false);
   };
 
+  // Retiene el permiso del micrófono durante el dictado:
+  // sin esto, Chrome pregunta en cada reapertura.
+  const holdDictMic = async (): Promise<boolean> => {
+    if (dictMicStreamRef.current) return true;
+    try {
+      dictMicStreamRef.current = await navigator.mediaDevices.getUserMedia({ audio: true });
+      return true;
+    } catch {
+      return false;
+    }
+  };
+
+  function releaseDictMic() {
+    try {
+      dictMicStreamRef.current?.getTracks().forEach((t) => {
+        try {
+          t.stop();
+        } catch {
+          /* pista ya cerrada */
+        }
+      });
+    } catch {
+      /* sin micrófono retenido */
+    }
+    dictMicStreamRef.current = null;
+  }
+
   // La persona dicta y sus palabras caen al cuadro de la carta.
-  const toggleDictation = () => {
+  const toggleDictation = async () => {
     const Ctor = getDictationRecognition();
     if (!Ctor) return;
     setDictError(null);
@@ -593,6 +623,23 @@ export default function App() {
       /* sin voz activa */
     }
     setReadingDraft(false);
+    wantDictation.current = true;
+    let held = false;
+    try {
+      held = await holdDictMic();
+    } catch {
+      held = false;
+    }
+    if (!held) {
+      wantDictation.current = false;
+      setDictError('El navegador bloqueó el micrófono: pulsa el candado de la barra de dirección, permite el micrófono y recarga.');
+      return;
+    }
+    if (!wantDictation.current) {
+      // Se detuvo mientras pedía permiso: soltar y salir.
+      releaseDictMic();
+      return;
+    }
     const rec = new Ctor();
     rec.lang = 'es-ES';
     rec.continuous = true;
