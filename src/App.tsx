@@ -6,7 +6,6 @@ import {
   PenTool,
   LayoutGrid,
   Lock,
-  ShieldCheck,
   Sparkles,
   Heart,
   Plus,
@@ -801,11 +800,6 @@ export default function App() {
           </div>
 
           <div className="flex items-center gap-2 sm:gap-3">
-            <div className="hidden sm:flex items-center gap-2 bg-[#FAF4E5] border border-[#E8D8A6]/60 text-xs px-3.5 py-1.5 rounded-full text-[#6B625B]">
-              <ShieldCheck className="w-3.5 h-3.5 text-[#D4AF37]" />
-              <span className="font-medium text-[#2C241E]">Supabase Cloud Sync</span>
-            </div>
-
             <button
               onClick={() => {
                 if (session?.user?.id) fetchMemories(session.user.id);
@@ -990,8 +984,8 @@ export default function App() {
                 onClick={() => setActiveTab(t.id)}
                 className={`flex items-center justify-center gap-2 px-4 py-3 rounded-xl text-sm font-semibold border transition-all cursor-pointer ${
                   active
-                    ? 'bg-[#2C241E] text-[#FAF4E5] border-[#2C241E] shadow-xs'
-                    : 'bg-[#FFFFFF] text-[#2C241E] border-[#EFE9DE] hover:border-[#D4AF37]'
+                    ? 'eternal-glass-active bg-[#2C241E] text-[#FAF4E5]'
+                    : 'eternal-glass text-[#2C241E]'
                 }`}
               >
                 <Icon className="w-4 h-4 text-[#D4AF37]" />
