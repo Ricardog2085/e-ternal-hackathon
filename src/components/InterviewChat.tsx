@@ -30,6 +30,18 @@ export default function InterviewChat() {
     if (el) el.scrollTo({ top: el.scrollHeight, behavior: 'smooth' });
   }, [messages, sending]);
 
+  // Abordaje proactivo: si la persona no escribe, la guía la invita de nuevo.
+  useEffect(() => {
+    if (messages.length > 1 || sending) return;
+    const t = window.setTimeout(() => {
+      setMessages((prev) => {
+        if (prev.length > 1) return prev;
+        return [...prev, { role: 'assistant', content: 'Estoy aquí cuando quieras. Para empezar, cuéntame: ¿tienes hijos o nietos?' }];
+      });
+    }, 45000);
+    return () => window.clearTimeout(t);
+  }, [messages, sending]);
+
   // Al salir: apagar la voz para no dejar audio colgado.
   useEffect(() => {
     return () => {
@@ -60,8 +72,8 @@ export default function InterviewChat() {
     speakNow(text);
   };
 
-  const send = async () => {
-    const text = draft.trim();
+  const send = async (override?: string) => {
+    const text = (override ?? draft).trim();
     if (!text || sending) return;
     setDraft('');
     setSavedNote(null);
@@ -189,6 +201,21 @@ export default function InterviewChat() {
         </p>
       )}
 
+      {messages.length <= 1 && !sending && (
+        <div className="px-5 sm:px-6 pb-3 flex flex-wrap gap-2">
+          {['Tengo hijos', 'Tengo nietos', 'Empecemos'].map((chip) => (
+            <button
+              key={chip}
+              type="button"
+              onClick={() => send(chip)}
+              className="px-4 py-2 rounded-full bg-[#FAF4E5] border border-[#E8D8A6] hover:border-[#D4AF37] text-sm text-[#2C241E] transition-all cursor-pointer"
+            >
+              {chip}
+            </button>
+          ))}
+        </div>
+      )}
+
       <div className="px-5 sm:px-6 pb-5 flex items-center gap-2.5">
         <input
           type="text"
@@ -201,7 +228,7 @@ export default function InterviewChat() {
         />
         <button
           type="button"
-          onClick={send}
+          onClick={() => send()}
           disabled={sending || !draft.trim()}
           title="Enviar respuesta"
           className="w-12 h-12 rounded-xl bg-[#D4AF37] hover:bg-[#C59F2D] text-white flex items-center justify-center shadow-sm transition-all cursor-pointer disabled:opacity-60 disabled:cursor-not-allowed shrink-0"
