@@ -56,6 +56,7 @@ function translateAuthError(errorMsg: string): string {
 
 export default function Login({ onSuccess }: LoginProps) {
   const [isSignUp, setIsSignUp] = useState<boolean>(false);
+  const [isForgot, setIsForgot] = useState<boolean>(false);
   const [email, setEmail] = useState<string>('');
   const [password, setPassword] = useState<string>('');
   const [showPassword, setShowPassword] = useState<boolean>(false);
@@ -97,6 +98,27 @@ export default function Login({ onSuccess }: LoginProps) {
     const cleanEmail = email.trim();
     if (!isValidEmail(cleanEmail)) {
       setErrorMessage('Por favor escribe un correo electrónico válido.');
+      return;
+    }
+
+    if (isForgot) {
+      // Enviar enlace de recuperación al correo
+      setIsLoading(true);
+      try {
+        const { error } = await supabase.auth.resetPasswordForEmail(cleanEmail, {
+          redirectTo: window.location.origin,
+        });
+        if (error) {
+          setErrorMessage(translateAuthError(error.message));
+        } else {
+          setSuccessMessage('Te enviamos un correo con el enlace para crear una nueva contraseña. Revisa tu bandeja y el spam.');
+        }
+      } catch (err: unknown) {
+        const msg = err instanceof Error ? err.message : 'Error inesperado';
+        setErrorMessage(translateAuthError(msg));
+      } finally {
+        setIsLoading(false);
+      }
       return;
     }
 
@@ -166,9 +188,11 @@ export default function Login({ onSuccess }: LoginProps) {
           </p>
 
           <p className="mt-2.5 text-xs sm:text-sm text-[#6B625B]">
-            {isSignUp
-              ? 'Crea tu cuenta con tu correo para custodiar tus memorias.'
-              : 'Ingresa con tu correo y tu contraseña.'}
+            {isForgot
+              ? 'Escribe tu correo y te enviamos el enlace para una nueva contraseña.'
+              : isSignUp
+                ? 'Crea tu cuenta con tu correo para custodiar tus memorias.'
+                : 'Ingresa con tu correo y tu contraseña.'}
           </p>
         </div>
 
@@ -214,7 +238,8 @@ export default function Login({ onSuccess }: LoginProps) {
             </div>
           </div>
 
-          {/* Campo: Contraseña */}
+          {/* Campo: Contraseña (se oculta al recuperar) */}
+          {!isForgot && (
           <div>
             <div className="flex items-center justify-between mb-1.5">
               <label htmlFor="login-password" className="block text-xs font-bold text-[#2C241E] uppercase tracking-wider">
@@ -232,7 +257,7 @@ export default function Login({ onSuccess }: LoginProps) {
               <input
                 id="login-password"
                 type={showPassword ? 'text' : 'password'}
-                required
+                required={!isForgot}
                 minLength={MIN_PASSWORD_LENGTH}
                 autoComplete={isSignUp ? 'new-password' : 'current-password'}
                 placeholder="Tu contraseña"
@@ -250,18 +275,24 @@ export default function Login({ onSuccess }: LoginProps) {
               </button>
             </div>
           </div>
+          )}
 
           {/* Botón Principal de Gran Tamaño */}
           <div className="pt-2">
             <button
               type="submit"
-              disabled={isLoading || !email.trim() || password.length < MIN_PASSWORD_LENGTH}
+              disabled={isLoading || !email.trim() || (!isForgot && password.length < MIN_PASSWORD_LENGTH)}
               className="w-full py-4 px-5 rounded-2xl bg-gradient-to-r from-[#D4AF37] via-[#DDBE58] to-[#C59F2D] hover:from-[#C59F2D] hover:to-[#B69024] text-white text-base font-bold tracking-wide shadow-lg shadow-[#D4AF37]/25 hover:shadow-xl transition-all cursor-pointer flex items-center justify-center gap-2 disabled:opacity-60 disabled:cursor-not-allowed active:scale-[0.99]"
             >
               {isLoading ? (
                 <>
                   <Loader2 className="w-5 h-5 animate-spin text-white" />
-                  <span>Verificando acceso...</span>
+                  <span>{isForgot ? 'Enviando enlace...' : 'Verificando acceso...'}</span>
+                </>
+              ) : isForgot ? (
+                <>
+                  <Mail className="w-5 h-5" />
+                  <span>Enviar enlace</span>
                 </>
               ) : isSignUp ? (
                 <>
@@ -300,23 +331,52 @@ export default function Login({ onSuccess }: LoginProps) {
           <span>Continuar con Facebook</span>
         </button>
 
-        {/* Alternar entre Ingresar y Crear Cuenta */}
-        <div className="mt-6 pt-5 border-t border-[#F3ECE0] text-center">
-          <button
-            type="button"
-            onClick={() => {
-              setIsSignUp(!isSignUp);
-              setErrorMessage(null);
-              setSuccessMessage(null);
-            }}
-            className="text-xs sm:text-sm text-[#6B625B] hover:text-[#2C241E] transition-colors cursor-pointer"
-          >
-            {isSignUp ? (
-              <>¿Ya tienes cuenta? <span className="text-[#D4AF37] font-bold underline ml-1">Ingresar</span></>
-            ) : (
-              <>¿Es tu primera vez aquí? <span className="text-[#D4AF37] font-bold underline ml-1">Crear cuenta</span></>
-            )}
-          </button>
+        {/* Alternar entre Ingresar, Crear Cuenta y Recuperar */}
+        <div className="mt-6 pt-5 border-t border-[#F3ECE0] text-center space-y-2.5">
+          {isForgot ? (
+            <button
+              type="button"
+              onClick={() => {
+                setIsForgot(false);
+                setErrorMessage(null);
+                setSuccessMessage(null);
+              }}
+              className="text-xs sm:text-sm text-[#6B625B] hover:text-[#2C241E] transition-colors cursor-pointer"
+            >
+              Volver a <span className="text-[#D4AF37] font-bold underline ml-1">Ingresar</span>
+            </button>
+          ) : (
+            <>
+              <button
+                type="button"
+                onClick={() => {
+                  setIsSignUp(!isSignUp);
+                  setErrorMessage(null);
+                  setSuccessMessage(null);
+                }}
+                className="text-xs sm:text-sm text-[#6B625B] hover:text-[#2C241E] transition-colors cursor-pointer block w-full"
+              >
+                {isSignUp ? (
+                  <>¿Ya tienes cuenta? <span className="text-[#D4AF37] font-bold underline ml-1">Ingresar</span></>
+                ) : (
+                  <>¿Es tu primera vez aquí? <span className="text-[#D4AF37] font-bold underline ml-1">Crear cuenta</span></>
+                )}
+              </button>
+              {!isSignUp && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setIsForgot(true);
+                    setErrorMessage(null);
+                    setSuccessMessage(null);
+                  }}
+                  className="text-xs sm:text-sm text-[#6B625B] hover:text-[#2C241E] transition-colors cursor-pointer block w-full"
+                >
+                  ¿Olvidaste tu contraseña? <span className="text-[#D4AF37] font-bold underline ml-1">Recuperarla</span>
+                </button>
+              )}
+            </>
+          )}
         </div>
 
         {/* Garantía de Seguridad */}

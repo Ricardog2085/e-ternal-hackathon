@@ -30,6 +30,7 @@ import GlassLayout from './components/GlassLayout';
 import GlassNavbar from './components/GlassNavbar';
 import GlassCard from './components/GlassCard';
 import InterviewChat from './components/InterviewChat';
+import ResetPassword from './components/ResetPassword';
 import DeliveryPanel from './components/DeliveryPanel';
 import { fetchRecipients, type Recipient } from './lib/vault';
 
@@ -114,6 +115,7 @@ function mapRecordToMemory(row: any): Memory {
 export default function App() {
   // Session & Auth state
   const [session, setSession] = useState<Session | null>(null);
+  const [isRecovery, setIsRecovery] = useState(false);
   const [authLoading, setAuthLoading] = useState<boolean>(true);
   const [activeView, setActiveView] = useState<'glass' | 'vault'>('vault');
 
@@ -269,14 +271,18 @@ export default function App() {
     // 2. Real-time subscription to sign in / sign out events
     const {
       data: { subscription },
-    } = supabase.auth.onAuthStateChange((_event, currentSession) => {
+    } = supabase.auth.onAuthStateChange((event, currentSession) => {
       setSession(currentSession);
       setAuthLoading(false);
+      if (event === 'PASSWORD_RECOVERY') {
+        setIsRecovery(true);
+      }
       if (currentSession) {
         fetchMemories(currentSession.user.id);
         loadRecipients(currentSession.user.id);
       } else {
         setMemories([]);
+        setIsRecovery(false);
       }
     });
 
@@ -835,6 +841,22 @@ export default function App() {
             <span>Verificando Llave del Santuario...</span>
           </div>
         </div>
+      </GlassLayout>
+    );
+  }
+
+  // Enlace de recuperación: crear nueva contraseña antes de entrar.
+  if (isRecovery) {
+    return (
+      <GlassLayout>
+        <main className="flex-1 flex flex-col items-center justify-center p-4 sm:p-6 md:p-10 my-auto">
+          <ResetPassword
+            onDone={() => {
+              setIsRecovery(false);
+              window.history.replaceState({}, '', '/');
+            }}
+          />
+        </main>
       </GlassLayout>
     );
   }
