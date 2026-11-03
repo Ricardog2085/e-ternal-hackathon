@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   Video,
   Mic,
@@ -34,28 +34,7 @@ import ResetPassword from './components/ResetPassword';
 import DeliveryPanel from './components/DeliveryPanel';
 import { fetchRecipients, type Recipient } from './lib/vault';
 
-// Dictado por voz con Web Speech API del navegador (sin servidor).
-type DictationRecognition = {
-  lang: string;
-  continuous: boolean;
-  interimResults: boolean;
-  maxAlternatives: number;
-  onresult: ((event: { results: ArrayLike<ArrayLike<{ transcript: string }>> }) => void) | null;
-  onerror: ((event: unknown) => void) | null;
-  onend: (() => void) | null;
-  start: () => void;
-  stop: () => void;
-};
-type DictationRecognitionCtor = new () => DictationRecognition;
-
-function getDictationRecognition(): DictationRecognitionCtor | null {
-  if (typeof window === 'undefined') return null;
-  const w = window as unknown as {
-    SpeechRecognition?: DictationRecognitionCtor;
-    webkitSpeechRecognition?: DictationRecognitionCtor;
-  };
-  return w.SpeechRecognition || w.webkitSpeechRecognition || null;
-}
+// Lectura en voz alta con Web Speech API del navegador (sin servidor).
 
 const NEW_MEMORY_COLS = ['recipient_id', 'unlock_condition'];
 
@@ -140,14 +119,9 @@ export default function App() {
   // Async action loading states for UX
   const [isSaving, setIsSaving] = useState<boolean>(false);
   const [isDrafting, setIsDrafting] = useState<boolean>(false);
-  const [dictating, setDictating] = useState(false);
   const [readingDraft, setReadingDraft] = useState(false);
   const [dictError, setDictError] = useState<string | null>(null);
-  const [dictSupported] = useState(() => getDictationRecognition() !== null);
   const [draftTtsSupported] = useState(() => typeof window !== 'undefined' && 'speechSynthesis' in window);
-  const dictationRef = useRef<DictationRecognition | null>(null);
-  const wantDictation = useRef(false);
-  const dictMicStreamRef = useRef<MediaStream | null>(null);
   const [deletingId, setDeletingId] = useState<string | null>(null);
 
   // Form states for creating a new memory modal
@@ -554,16 +528,9 @@ export default function App() {
     }
   };
 
-  // Al cerrar el modal: apagar dictado y lectura en voz alta.
+  // Al cerrar el modal: apagar la lectura en voz alta.
   useEffect(() => {
     if (activeModal) return;
-    wantDictation.current = false;
-    releaseDictMic();
-    try {
-      dictationRef.current?.stop();
-    } catch {
-      /* sin dictado activo */
-    }
     try {
       if ('speechSynthesis' in window) window.speechSynthesis.cancel();
     } catch {
@@ -571,142 +538,11 @@ export default function App() {
     }
     // En microtarea para no fijar estado sincrónicamente.
     Promise.resolve().then(() => {
-      setDictating(false);
       setReadingDraft(false);
     }).catch(() => {});
   }, [activeModal]);
 
-  const stopDictation = () => {
-    wantDictation.current = false;
-    releaseDictMic();
-    try {
-      dictationRef.current?.stop();
-    } catch {
-      /* sin dictado activo */
-    }
-    setDictating(false);
-  };
-
-  // Retiene el permiso del micrófono durante el dictado:
-  // sin esto, Chrome pregunta en cada reapertura.
-  const holdDictMic = async (): Promise<boolean> => {
-    if (dictMicStreamRef.current) return true;
-    try {
-      dictMicStreamRef.current = await navigator.mediaDevices.getUserMedia({ audio: true });
-      return true;
-    } catch {
-      return false;
-    }
-  };
-
-  function releaseDictMic() {
-    try {
-      dictMicStreamRef.current?.getTracks().forEach((t) => {
-        try {
-          t.stop();
-        } catch {
-          /* pista ya cerrada */
-        }
-      });
-    } catch {
-      /* sin micrófono retenido */
-    }
-    dictMicStreamRef.current = null;
-  }
-
-  // La persona dicta y sus palabras caen al cuadro de la carta.
-  const toggleDictation = async () => {
-    const Ctor = getDictationRecognition();
-    if (!Ctor) return;
-    setDictError(null);
-    if (dictating) {
-      stopDictation();
-      return;
-    }
-    try {
-      if ('speechSynthesis' in window) window.speechSynthesis.cancel();
-    } catch {
-      /* sin voz activa */
-    }
-    setReadingDraft(false);
-    wantDictation.current = true;
-    let held = false;
-    try {
-      held = await holdDictMic();
-    } catch {
-      held = false;
-    }
-    if (!held) {
-      wantDictation.current = false;
-      setDictError('El navegador bloqueó el micrófono: pulsa el candado de la barra de dirección, permite el micrófono y recarga.');
-      return;
-    }
-    if (!wantDictation.current) {
-      // Se detuvo mientras pedía permiso: soltar y salir.
-      releaseDictMic();
-      return;
-    }
-    const rec = new Ctor();
-    rec.lang = 'es-ES';
-    rec.continuous = true;
-    rec.interimResults = false;
-    rec.maxAlternatives = 1;
-    rec.onresult = (event) => {
-      const last = event.results[event.results.length - 1];
-      const transcript = last && last[0] ? last[0].transcript : '';
-      if (transcript.trim()) {
-        setFormContent((prev) => (prev ? `${prev} ${transcript.trim()}` : transcript.trim()));
-        setDictError(null);
-      }
-    };
-    rec.onerror = (event: unknown) => {
-      setDictating(false);
-      const code = (event as { error?: string })?.error || '';
-      if (code === 'not-allowed' || code === 'service-not-allowed' || code === 'audio-capture') {
-        wantDictation.current = false;
-      }
-      if (code === 'not-allowed' || code === 'service-not-allowed') {
-        setDictError('El navegador bloqueó el micrófono: pulsa el candado de la barra de dirección, permite el micrófono y recarga.');
-      } else if (code === 'no-speech') {
-        setDictError('No te escuché: acércate al micrófono y vuelve a pulsar.');
-      } else if (code === 'audio-capture') {
-        setDictError('No encontré ningún micrófono en este equipo.');
-      } else if (code === 'network') {
-        setDictError('El dictado necesita conexión a internet.');
-      } else if (code) {
-        setDictError(`El micrófono falló (${code}). Vuelve a pulsar.`);
-      }
-    };
-    rec.onend = () => {
-      // Si el navegador corta al pausar, reabrir mientras la persona no lo detenga.
-      // Con pequeña espera: Chrome rechaza reabrir de inmediato.
-      if (wantDictation.current) {
-        window.setTimeout(() => {
-          if (!wantDictation.current) return;
-          try {
-            rec.start();
-          } catch {
-            wantDictation.current = false;
-            setDictating(false);
-          }
-        }, 150);
-      } else {
-        setDictating(false);
-      }
-    };
-    dictationRef.current = rec;
-    wantDictation.current = true;
-    try {
-      rec.start();
-      setDictating(true);
-    } catch {
-      wantDictation.current = false;
-      setDictating(false);
-      setDictError('No pude abrir el micrófono. Revisa el permiso en el candado de la barra de dirección.');
-    }
-  };
-
-  // La guía lee en voz alta lo que hay en el cuadro (dictado o borrador).
+  // La guía lee en voz alta lo que hay en el cuadro (texto o borrador).
   const toggleReadDraft = () => {
     if (!('speechSynthesis' in window)) return;
     if (readingDraft) {
@@ -719,11 +555,10 @@ export default function App() {
       return;
     }
     if (!formContent.trim()) {
-      setDictError('Aún no hay nada que leer: dicta o redacta primero.');
+      setDictError('Aún no hay nada que leer: escribe o redacta primero.');
       return;
     }
     setDictError(null);
-    stopDictation();
     try {
       const utter = new SpeechSynthesisUtterance(formContent);
       utter.lang = 'es-ES';
@@ -748,7 +583,7 @@ export default function App() {
       return;
     }
     if (!formContent.trim()) {
-      setModalError('Dicta con el micrófono o escribe primero unas palabras, y luego pulsa el botón.');
+      setModalError('Escribe primero unas palabras, y luego pulsa el botón.');
       return;
     }
     setIsDrafting(true);
@@ -1555,30 +1390,13 @@ export default function App() {
                     rows={4}
                     placeholder={
                       activeModal === 'Carta'
-                        ? 'Dicta con el micrófono o escribe tus palabras aquí...'
+                        ? 'Escribe tus palabras aquí...'
                         : 'Describe brevemente el contexto de esta grabación...'
                     }
                     value={formContent}
                     onChange={(e) => setFormContent(e.target.value)}
                     className="flex-1 px-3.5 py-2.5 rounded-xl bg-[#FDFBF7] border border-[#EFE9DE] focus:border-[#D4AF37] focus:ring-1 focus:ring-[#D4AF37] outline-hidden text-sm text-[#2C241E]"
                   />
-                  {activeModal === 'Carta' && dictSupported && (
-                    <button
-                      type="button"
-                      onClick={toggleDictation}
-                      disabled={isSaving || isDrafting}
-                      title={dictating ? 'Dejar de escuchar' : 'Dictar la carta con tu voz'}
-                      aria-label={dictating ? 'Dejar de escuchar' : 'Dictar la carta con tu voz'}
-                      aria-pressed={dictating}
-                      className={`w-12 h-12 rounded-xl flex items-center justify-center shadow-xs transition-all cursor-pointer disabled:opacity-60 disabled:cursor-not-allowed shrink-0 ${
-                        dictating
-                          ? 'bg-red-500 hover:bg-red-600 text-white animate-pulse'
-                          : 'bg-[#FDFBF7] border border-[#EFE9DE] hover:border-[#D4AF37]/60 text-[#2C241E]'
-                      }`}
-                    >
-                      <Mic className="w-5 h-5" />
-                    </button>
-                  )}
                   {activeModal === 'Carta' && draftTtsSupported && (
                     <button
                       type="button"
@@ -1597,9 +1415,6 @@ export default function App() {
                     </button>
                   )}
                 </div>
-                {activeModal === 'Carta' && dictating && (
-                  <p className="mt-1.5 text-xs font-semibold text-red-600">Te escucho... habla; pulsa de nuevo al terminar</p>
-                )}
                 {activeModal === 'Carta' && dictError && (
                   <p className="mt-1.5 text-xs text-amber-800 bg-amber-50 border border-amber-200 rounded-xl px-3 py-2">{dictError}</p>
                 )}
@@ -1621,7 +1436,7 @@ export default function App() {
                     <span>{isDrafting ? 'Convirtiendo en carta...' : 'Convertir en carta'}</span>
                   </button>
                   <p className="mt-1.5 text-[11px] text-[#6B625B] text-center">
-                    Dicta con el micrófono y pulsa para convertir tus palabras en una carta bonita.
+                    Escribe tus palabras y pulsa para convertirlas en una carta bonita.
                   </p>
                 </div>
               )}

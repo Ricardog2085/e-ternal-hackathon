@@ -1,38 +1,10 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { Send, Loader2, Sparkles, Mic, Volume2, VolumeX } from 'lucide-react';
+import { Send, Loader2, Sparkles, Volume2, VolumeX } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 
 interface ChatMessage {
   role: 'user' | 'assistant';
   content: string;
-}
-
-// Voz con Web Speech API del navegador (Chrome/Edge, gratis, sin servidor):
-// micrófono para dictar respuestas y lectura en voz alta de la guía.
-type SpeechRecognitionInstance = {
-  lang: string;
-  continuous: boolean;
-  interimResults: boolean;
-  maxAlternatives: number;
-  onresult: ((event: { results: ArrayLike<ArrayLike<{ transcript: string }>> }) => void) | null;
-  onerror: ((event: unknown) => void) | null;
-  onend: (() => void) | null;
-  start: () => void;
-  stop: () => void;
-};
-type SpeechRecognitionCtor = new () => SpeechRecognitionInstance;
-
-function getSpeechRecognition(): SpeechRecognitionCtor | null {
-  if (typeof window === 'undefined') return null;
-  const w = window as unknown as {
-    SpeechRecognition?: SpeechRecognitionCtor;
-    webkitSpeechRecognition?: SpeechRecognitionCtor;
-  };
-  return w.SpeechRecognition || w.webkitSpeechRecognition || null;
-}
-
-function ttsAvailable(): boolean {
-  return typeof window !== 'undefined' && 'speechSynthesis' in window;
 }
 
 const GREETING =
@@ -47,34 +19,22 @@ export default function InterviewChat() {
   const [sending, setSending] = useState(false);
   const [failed, setFailed] = useState(false);
   const [failDetail, setFailDetail] = useState<string | null>(null);
-  const [micError, setMicError] = useState<string | null>(null);
-  const [listening, setListening] = useState(false);
   const [voiceReply, setVoiceReply] = useState(false);
-  const [micSupported] = useState(() => getSpeechRecognition() !== null);
-  const [ttsSupported] = useState(() => ttsAvailable());
+  const [ttsSupported] = useState(
+    () => typeof window !== 'undefined' && 'speechSynthesis' in window
+  );
   const scrollRef = useRef<HTMLDivElement | null>(null);
-  const recognitionRef = useRef<SpeechRecognitionInstance | null>(null);
-  const wantListening = useRef(false);
-  const [conversing, setConversing] = useState(false);
-  const micStreamRef = useRef<MediaStream | null>(null);
 
   useEffect(() => {
     const el = scrollRef.current;
     if (el) el.scrollTo({ top: el.scrollHeight, behavior: 'smooth' });
   }, [messages, sending]);
 
-  // Al salir: apagar micrófono y voz para no dejar audio colgado.
+  // Al salir: apagar la voz para no dejar audio colgado.
   useEffect(() => {
     return () => {
-      wantListening.current = false;
-      releaseMic();
       try {
-        recognitionRef.current?.stop();
-      } catch {
-        /* sin micrófono activo */
-      }
-      try {
-        if (ttsAvailable()) window.speechSynthesis.cancel();
+        if ('speechSynthesis' in window) window.speechSynthesis.cancel();
       } catch {
         /* sin voz activa */
       }
@@ -100,177 +60,9 @@ export default function InterviewChat() {
     speakNow(text);
   };
 
-  // Habla y avisa al terminar (para reabrir el micro en conversación).
-  const speakThen = (text: string, after: () => void) => {
-    if (!ttsSupported || !text.trim()) {
-      after();
-      return;
-    }
-    try {
-      const synth = window.speechSynthesis;
-      synth.cancel();
-      const utter = new SpeechSynthesisUtterance(text);
-      utter.lang = 'es-ES';
-      utter.rate = 0.95;
-      utter.onend = () => after();
-      utter.onerror = () => after();
-      synth.speak(utter);
-    } catch {
-      after();
-    }
-  };
-
-  const stopListening = () => {
-    wantListening.current = false;
-    setConversing(false);
-    releaseMic();
-    try {
-      recognitionRef.current?.stop();
-    } catch {
-      /* sin micrófono activo */
-    }
-    setListening(false);
-  };
-
-  // Pausa momentánea (la guía piensa o habla): la conversación sigue abierta.
-  const pauseListening = () => {
-    try {
-      recognitionRef.current?.stop();
-    } catch {
-      /* sin micrófono activo */
-    }
-    setListening(false);
-  };
-
-  // Retiene el permiso del micrófono durante toda la conversación:
-  // sin esto, Chrome pregunta en cada reapertura.
-  const holdMic = async (): Promise<boolean> => {
-    if (micStreamRef.current) return true;
-    try {
-      micStreamRef.current = await navigator.mediaDevices.getUserMedia({ audio: true });
-      return true;
-    } catch {
-      return false;
-    }
-  };
-
-  function releaseMic() {
-    try {
-      micStreamRef.current?.getTracks().forEach((t) => {
-        try {
-          t.stop();
-        } catch {
-          /* pista ya cerrada */
-        }
-      });
-    } catch {
-      /* sin micrófono retenido */
-    }
-    micStreamRef.current = null;
-  }
-
-  // Abre el micrófono: primera pulsación o reanudación de la conversación.
-  const openMic = async () => {
-    const Ctor = getSpeechRecognition();
-    if (!Ctor) return;
-    const held = await holdMic();
-    if (!held) {
-      wantListening.current = false;
-      setConversing(false);
-      setMicError('El navegador bloqueó el micrófono: pulsa el candado de la barra de dirección, permite el micrófono y recarga.');
-      return;
-    }
-    if (!wantListening.current) {
-      // Se detuvo mientras pedía permiso: soltar y salir.
-      releaseMic();
-      setConversing(false);
-      return;
-    }
-    try {
-      if (ttsSupported) window.speechSynthesis.cancel();
-    } catch {
-      /* sin voz activa */
-    }
-    const rec = new Ctor();
-    rec.lang = 'es-ES';
-    rec.continuous = true;
-    rec.interimResults = false;
-    rec.maxAlternatives = 1;
-    rec.onresult = (event) => {
-      const last = event.results[event.results.length - 1];
-      const transcript = last && last[0] ? last[0].transcript : '';
-      if (transcript.trim()) {
-        setDraft((prev) => (prev ? `${prev} ${transcript.trim()}` : transcript.trim()));
-        setMicError(null);
-      }
-    };
-    rec.onerror = (event: unknown) => {
-      setListening(false);
-      const code = (event as { error?: string })?.error || '';
-      if (code === 'not-allowed' || code === 'service-not-allowed' || code === 'audio-capture') {
-        wantListening.current = false;
-        setConversing(false);
-      }
-      if (code === 'not-allowed' || code === 'service-not-allowed') {
-        setMicError('El navegador bloqueó el micrófono: pulsa el candado de la barra de dirección, permite el micrófono y recarga la página.');
-      } else if (code === 'no-speech') {
-        setMicError('No te escuché: acércate al micrófono y sigue hablando.');
-      } else if (code === 'audio-capture') {
-        setMicError('No encontré ningún micrófono en este equipo.');
-      } else if (code === 'network') {
-        setMicError('El dictado necesita conexión a internet.');
-      } else if (code) {
-        setMicError(`El micrófono falló (${code}). Vuelve a pulsar.`);
-      }
-    };
-    rec.onend = () => {
-      // Si el navegador corta al pausar, reabrir mientras la conversación siga abierta.
-      // Con pequeña espera: Chrome rechaza reabrir de inmediato.
-      if (wantListening.current) {
-        window.setTimeout(() => {
-          if (!wantListening.current) return;
-          try {
-            rec.start();
-          } catch {
-            wantListening.current = false;
-            setConversing(false);
-            setListening(false);
-          }
-        }, 150);
-      } else {
-        setListening(false);
-      }
-    };
-    recognitionRef.current = rec;
-    wantListening.current = true;
-    setConversing(true);
-    try {
-      rec.start();
-      setListening(true);
-    } catch {
-      wantListening.current = false;
-      setConversing(false);
-      setListening(false);
-      setMicError('No pude abrir el micrófono. Revisa el permiso en el candado de la barra de dirección.');
-    }
-  };
-
-  const toggleListen = () => {
-    if (!getSpeechRecognition()) return;
-    setMicError(null);
-    if (wantListening.current) {
-      stopListening();
-      return;
-    }
-    wantListening.current = true;
-    setConversing(true);
-    void openMic();
-  };
-
   const send = async () => {
     const text = draft.trim();
     if (!text || sending) return;
-    pauseListening();
     setDraft('');
     setSavedNote(null);
     setFailed(false);
@@ -290,18 +82,7 @@ export default function InterviewChat() {
       const reply = (data?.reply || '').toString() || 'Perdona, no pude responder. Inténtalo de nuevo.';
       const saved = Array.isArray(data?.saved) ? data.saved.filter(Boolean) : [];
       setMessages((prev) => [...prev, { role: 'assistant', content: reply }]);
-      if (wantListening.current) {
-        // Conversación abierta: al terminar de hablar la guía, reabrir el micro.
-        if (voiceReply) {
-          speakThen(reply, () => {
-            if (wantListening.current) void openMic();
-          });
-        } else {
-          void openMic();
-        }
-      } else {
-        speak(reply);
-      }
+      speak(reply);
       if (saved.length > 0) {
         setSavedNote(`He guardado en tu perfil: ${saved.join(', ')}`);
       }
@@ -402,49 +183,19 @@ export default function InterviewChat() {
         </p>
       )}
 
-      {micError && (
-        <p className="mx-5 sm:mx-6 mb-3 px-3.5 py-2 rounded-xl bg-amber-50 border border-amber-200 text-amber-900 text-xs">
-          {micError}
-        </p>
-      )}
-
       {failed && (
         <p className="mx-5 sm:mx-6 mb-3 px-3.5 py-2 rounded-xl bg-amber-50 border border-amber-200 text-amber-900 text-xs">
           No pude responder. Revisa tu conexión o que la función interview esté desplegada, e inténtalo de nuevo.{failDetail}
         </p>
       )}
 
-      {conversing && (
-        <p className="mx-5 sm:mx-6 mb-3 px-3.5 py-2 rounded-xl bg-[#FAF4E5] border border-[#D4AF37]/50 text-[#2C241E] text-xs">
-          {listening
-            ? 'Conversación abierta: habla, pulsa Enviar, y sigue. Pulsa el micrófono para terminar.'
-            : 'La guía está respondiendo... tu turno sigue.'}
-        </p>
-      )}
-
       <div className="px-5 sm:px-6 pb-5 flex items-center gap-2.5">
-        {micSupported && (
-          <button
-            type="button"
-            onClick={toggleListen}
-            title={conversing ? 'Terminar conversación' : 'Hablar con la guía'}
-            aria-label={conversing ? 'Terminar conversación' : 'Hablar con la guía'}
-            aria-pressed={conversing}
-            className={`w-12 h-12 rounded-xl flex items-center justify-center shadow-sm transition-all cursor-pointer disabled:opacity-60 disabled:cursor-not-allowed shrink-0 ${
-              conversing
-                ? 'bg-red-500 hover:bg-red-600 text-white animate-pulse'
-                : 'bg-[#FDFBF7] border border-[#EFE9DE] hover:border-[#D4AF37]/60 text-[#2C241E]'
-            }`}
-          >
-            <Mic className="w-5 h-5" />
-          </button>
-        )}
         <input
           type="text"
           value={draft}
           onChange={(e) => setDraft(e.target.value)}
           onKeyDown={handleKey}
-          placeholder={conversing ? 'Conversación abierta: habla y pulsa Enviar' : 'Escribe o pulsa el micrófono...'}
+          placeholder="Escribe tu respuesta..."
           disabled={sending}
           className="flex-1 px-4 py-3 rounded-xl bg-[#FDFBF7] border border-[#EFE9DE] focus:border-[#D4AF37] focus:ring-1 focus:ring-[#D4AF37] outline-hidden text-[15px] text-[#2C241E] disabled:opacity-60"
         />
