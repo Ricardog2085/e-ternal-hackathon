@@ -83,7 +83,8 @@
 }
 
 body {
-  background-color: #FAFAFA;
+  background: linear-gradient(180deg, #F7F1DE 0%, #F2E7CB 55%, #EBD9B6 100%);
+  background-attachment: fixed;
   color: #18181B;
   font-family: 'Plus Jakarta Sans', system-ui, -apple-system, sans-serif;
   margin: 0;

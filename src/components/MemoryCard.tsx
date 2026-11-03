@@ -1,4 +1,5 @@
-import { useRef, useState } from 'react';
+import { useEffect, useState } from 'react';
+import { renderParchment, uploadParchment } from '../lib/parchment';
 import { supabase } from '../lib/supabase';
 import type { Recipient } from '../lib/vault';
 import {
@@ -47,7 +48,8 @@ export default function MemoryCard({ memory, isDeleting, onDelete, onEditDeliver
   // Si el archivo murió (era pública), mostrar aviso honesto en vez de reproductor roto
   const [mediaDead, setMediaDead] = useState<boolean>(false);
   const [sendingWa, setSendingWa] = useState<boolean>(false);
-  const videoRef = useRef<HTMLVideoElement | null>(null);
+  const [sendingParchment, setSendingParchment] = useState(false);
+  const [showVR, setShowVR] = useState(false);
   const [poster, setPoster] = useState<string | undefined>(undefined);
   // Edición de entrega: destinatario y fecha programada desde la tarjeta.
   const initialDate = (() => {
@@ -74,33 +76,60 @@ export default function MemoryCard({ memory, isDeleting, onDelete, onEditDeliver
     }
   };
 
-  // Miniatura local: captura el primer cuadro para que el video no se vea
-  // negro en celular (donde el navegador no precarga). Si falla, no rompe nada.
-  const capturePoster = () => {
-    const v = videoRef.current;
-    if (!v || poster || v.readyState < 2 || v.videoWidth === 0) return;
-    try {
-      if (v.currentTime < 0.05 && (v.duration || 0) > 0.2) {
-        v.currentTime = 0.1;
-        return;
-      }
-      const canvas = document.createElement('canvas');
-      const w = 320;
-      canvas.width = w;
-      canvas.height = Math.max(1, Math.round((w * v.videoHeight) / Math.max(1, v.videoWidth)));
-      const ctx = canvas.getContext('2d');
-      if (!ctx) return;
-      ctx.drawImage(v, 0, 0, canvas.width, canvas.height);
-      setPoster(canvas.toDataURL('image/jpeg', 0.7));
+  // Miniatura: captura un cuadro con un video oculto (sin tocar el reproductor).
+  // Usa un momento con imagen (los videos IA suelen fundir desde negro).
+  useEffect(() => {
+    if (memory.type !== 'Video' || !memory.fileUrl || poster) return;
+    let cancelled = false;
+    const v = document.createElement('video');
+    v.crossOrigin = 'anonymous';
+    v.muted = true;
+    v.preload = 'auto';
+    const cleanup = () => {
+      v.src = '';
+    };
+    const grab = () => {
       try {
-        v.currentTime = 0;
+        if (v.readyState < 2 || v.videoWidth === 0) return;
+        const canvas = document.createElement('canvas');
+        const w = 320;
+        canvas.width = w;
+        canvas.height = Math.max(1, Math.round((w * v.videoHeight) / Math.max(1, v.videoWidth)));
+        const ctx = canvas.getContext('2d');
+        if (!ctx) return;
+        ctx.drawImage(v, 0, 0, canvas.width, canvas.height);
+        if (!cancelled) setPoster(canvas.toDataURL('image/jpeg', 0.7));
       } catch {
-        /* ignore */
+        /* CORS/formato: sin miniatura */
+      } finally {
+        cleanup();
       }
-    } catch {
-      /* sin acceso al cuadro (CORS/formato): queda como antes */
-    }
-  };
+    };
+    v.onloadeddata = () => {
+      if (cancelled) return;
+      try {
+        const d = v.duration || 0;
+        const target = d > 1 ? Math.min(2, d * 0.25) : 0.1;
+        if (d > 0.3 && Math.abs(v.currentTime - target) > 0.05) {
+          v.currentTime = target;
+          return;
+        }
+      } catch {
+        /* sigue con el cuadro actual */
+      }
+      grab();
+    };
+    v.onseeked = () => {
+      if (!cancelled) grab();
+    };
+    v.onerror = cleanup;
+    v.src = memory.fileUrl;
+    return () => {
+      cancelled = true;
+      cleanup();
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [memory.type, memory.fileUrl]);
 
   // Envío directo por video: abre wa.me con mensaje + enlace.
   // Con teléfono va al chat; sin teléfono abre el selector de chats.
@@ -128,6 +157,29 @@ export default function MemoryCard({ memory, isDeleting, onDelete, onEditDeliver
       window.open(url, '_blank', 'noopener');
     } finally {
       setSendingWa(false);
+    }
+  };
+
+  // Carta como imagen pergamino: renderiza, sube y envía el enlace por WhatsApp.
+  const sendParchment = async () => {
+    if (!isLetter || sendingParchment) return;
+    setSendingParchment(true);
+    setEditMsg(null);
+    try {
+      const blob = await renderParchment(memory.title, memory.preview || '');
+      const url = await uploadParchment(memory.id, blob);
+      const phone = (recipients.find((r) => r.id === memory.recipientId)?.phone || '').replace(/\D/g, '');
+      const msg = `Hola ${memory.recipient}, E-ternal te entrega una carta: ${memory.title}\n${url}`;
+      window.open(
+        phone ? `https://wa.me/${phone}?text=${encodeURIComponent(msg)}` : `https://wa.me/?text=${encodeURIComponent(msg)}`,
+        '_blank',
+        'noopener'
+      );
+      setEditMsg('Pergamino enviado ✓');
+    } catch (err) {
+      setEditMsg(err instanceof Error ? err.message : 'No se pudo crear el pergamino');
+    } finally {
+      setSendingParchment(false);
     }
   };
 
@@ -182,6 +234,23 @@ export default function MemoryCard({ memory, isDeleting, onDelete, onEditDeliver
                 )}
                 <span className="text-[11px] font-semibold">WhatsApp</span>
               </button>
+              {isLetter && (
+                <button
+                  type="button"
+                  onClick={sendParchment}
+                  disabled={sendingParchment}
+                  title="Enviar la carta como imagen pergamino"
+                  aria-label="Enviar carta como imagen"
+                  className="h-8 px-2.5 rounded-lg flex items-center gap-1.5 text-[#2C241E] bg-[#FAF4E5] hover:bg-[#F1E7C8] border border-[#E8D8A6] transition-all cursor-pointer disabled:opacity-60"
+                >
+                  {sendingParchment ? (
+                    <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                  ) : (
+                    <FileText className="w-3.5 h-3.5" />
+                  )}
+                  <span className="text-[11px] font-semibold">Pergamino</span>
+                </button>
+              )}
               {/* Botón de papelera para DELETE con texto de carga 'Eliminando...' */}
               <button
                 type="button"
@@ -231,15 +300,26 @@ export default function MemoryCard({ memory, isDeleting, onDelete, onEditDeliver
                 </button>
               </div>
 
+              {/* Easter egg: ver en modo inmersivo (VR) */}
+              <div className="absolute top-2.5 left-2.5 z-20">
+                <button
+                  type="button"
+                  onClick={() => setShowVR(true)}
+                  title="Ver en modo inmersivo (VR)"
+                  aria-label="Ver en modo inmersivo"
+                  className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-[#2C241E]/85 hover:bg-[#2C241E] text-[#D4AF37] hover:text-[#FAF4E5] border border-[#D4AF37]/50 hover:border-[#D4AF37] backdrop-blur-xs text-xs font-medium transition-all shadow-md cursor-pointer"
+                >
+                  <Play className="w-3.5 h-3.5" />
+                  <span className="text-[11px]">Ver en VR</span>
+                </button>
+              </div>
+
               {/* Reproductor de video con transformación rotacional animada */}
               <video
-                ref={videoRef}
                 playsInline
                 controls
                 src={memory.fileUrl}
                 poster={poster}
-                onLoadedData={capturePoster}
-                onSeeked={capturePoster}
                 onError={() => setMediaDead(true)}
                 style={{
                   transform: `rotate(${rotation}deg)`,
@@ -403,6 +483,36 @@ export default function MemoryCard({ memory, isDeleting, onDelete, onEditDeliver
           </div>
         </div>
       </div>
+      {showVR && isVideo && memory.fileUrl && (
+        <div className="fixed inset-0 z-[100] bg-black flex flex-col" role="dialog" aria-label="Vista inmersiva">
+          <div className="flex items-center justify-between px-4 py-3 text-[#FAF4E5]/80 text-[11px] tracking-[0.2em] uppercase shrink-0">
+            <span>E-ternal • Modo inmersivo</span>
+            <button
+              type="button"
+              onClick={() => setShowVR(false)}
+              className="px-3 py-1.5 rounded-lg border border-[#D4AF37]/60 text-[#D4AF37] hover:bg-[#D4AF37] hover:text-black transition-all cursor-pointer text-xs font-semibold tracking-normal normal-case"
+            >
+              Cerrar ✕
+            </button>
+          </div>
+          <div className="relative flex-1 flex items-center justify-center overflow-hidden">
+            <video
+              src={memory.fileUrl}
+              controls
+              autoPlay
+              playsInline
+              className="max-h-full max-w-full object-contain"
+            />
+            <div
+              className="pointer-events-none absolute inset-0"
+              style={{ background: 'radial-gradient(ellipse at center, transparent 45%, rgba(0,0,0,0.55) 78%, rgba(0,0,0,0.9) 100%)' }}
+            />
+            <p className="pointer-events-none absolute bottom-4 left-0 right-0 text-center text-[#FAF4E5]/70 text-xs tracking-widest">
+              Para: {memory.recipient}
+            </p>
+          </div>
+        </div>
+      )}
     </article>
   );
 }
