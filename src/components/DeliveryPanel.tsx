@@ -163,7 +163,7 @@ export default function DeliveryPanel({ userId, recipients, memories, onRecipien
   const nominateCustodian = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!cEmail.trim() && !cPhone.trim()) {
-      setNotice('Indica un correo o un teléfono del custodio.');
+      setNotice('Indica un correo o un teléfono de tu persona de confianza.');
       return;
     }
     setBusy('custodian');
@@ -200,9 +200,9 @@ export default function DeliveryPanel({ userId, recipients, memories, onRecipien
       const sent = summary.filter((s: { status?: string }) => s?.status === 'sent').length;
       const failed = summary.filter((s: { status?: string }) => s?.status === 'failed').length;
       if (data?.demo === false) {
-        setNotice(`Enviado por WhatsApp real: ${sent} entregado(s)${failed ? `, ${failed} fallido(s)` : ''}. Revisa el estado abajo.`);
+        setNotice(`Enviado por WhatsApp: ${sent} entregado(s)${failed ? `, ${failed} fallido(s)` : ''}. Revisa el estado abajo.`);
       } else {
-        setNotice(`Listo (simulado): ${sent} marcado(s)${failed ? `, ${failed} fallido(s)` : ''}. Para envío real pon DEMO_MODE=false y usa "Enviar por WhatsApp".`);
+        setNotice(`Modo prueba: ${sent} listo(s)${failed ? `, ${failed} fallido(s)` : ''}. Aún no se envió nada por WhatsApp.`);
       }
       refresh();
     } catch (err) {
@@ -303,23 +303,43 @@ export default function DeliveryPanel({ userId, recipients, memories, onRecipien
   const phoneCount = recipients.filter((r) => r.phone && r.phone.replace(/\D/g, '')).length;
   const custodianReleased = isCustodianReleased(custodian, nowMs);
   const custodianHint = !custodian
-    ? 'Sin custodio: desígnalo arriba.'
+    ? 'Falta anotar a tu persona de confianza.'
     : custodian.executed
-      ? 'Ya ejecutado: no reenvía.'
+      ? 'Ya se entregó todo.'
       : custodian.vetoed
-        ? 'Vetado por ti: cancelado.'
+        ? 'La cancelaste.'
         : custodian.status === 'active'
-          ? (custodianReleased ? 'Liberado: listo para enviar.' : `En espera hasta ${formatDate(custodian.waiting_until)}.`)
-          : 'Designado: actívalo con fecha/hora o 1 min.';
+          ? (custodianReleased ? 'Lista para enviar.' : `Se entrega: ${formatDate(custodian.waiting_until)}.`)
+          : 'Anotada: elige cuándo se entrega.';
 
   return (
     <div className="space-y-6">
+      {/* ¿Cómo funciona? Guía en 3 pasos */}
+      <section className="rounded-2xl border border-[#D4AF37]/50 bg-gradient-to-br from-[#2C241E] to-[#4A3F33] shadow-xs p-5 sm:p-6">
+        <h3 className="font-serif text-lg font-bold text-[#D4AF37]">¿Cómo llega tu legado?</h3>
+        <ol className="mt-3 space-y-2.5">
+          <li className="flex items-start gap-3">
+            <span className="w-7 h-7 rounded-full bg-[#D4AF37] text-[#2C241E] text-sm font-bold flex items-center justify-center shrink-0">1</span>
+            <p className="text-sm text-[#FAF4E5]"><strong>Anota para quién</strong> es cada recuerdo, con su WhatsApp.</p>
+          </li>
+          <li className="flex items-start gap-3">
+            <span className="w-7 h-7 rounded-full bg-[#D4AF37] text-[#2C241E] text-sm font-bold flex items-center justify-center shrink-0">2</span>
+            <p className="text-sm text-[#FAF4E5]"><strong>Elige a tu persona de confianza:</strong> ella avisará a E-ternal cuando llegue el momento.</p>
+          </li>
+          <li className="flex items-start gap-3">
+            <span className="w-7 h-7 rounded-full bg-[#D4AF37] text-[#2C241E] text-sm font-bold flex items-center justify-center shrink-0">3</span>
+            <p className="text-sm text-[#FAF4E5]"><strong>Ponle fecha:</strong> ese día tus recuerdos llegan solos por WhatsApp.</p>
+          </li>
+        </ol>
+        <p className="mt-3 text-xs text-[#FAF4E5]/70">Tranquilo: nada se envía antes de tiempo y siempre puedes cancelar.</p>
+      </section>
+
       {schemaHint && (
         <div className="p-4 rounded-xl bg-amber-50/90 border border-amber-200 text-amber-900 text-sm flex items-start gap-3">
           <AlertCircle className="w-5 h-5 text-amber-600 shrink-0 mt-0.5" />
           <p>
             Falta aplicar la guía <span className="font-mono text-xs">supabase/vault-delivery-setup.sql</span> en tu
-            panel de Supabase para activar destinatarios, custodio y entregas.
+            panel de Supabase para activar destinatarios, persona de confianza y entregas.
           </p>
         </div>
       )}
@@ -335,7 +355,7 @@ export default function DeliveryPanel({ userId, recipients, memories, onRecipien
       <section className="bg-[#FFFFFF] rounded-2xl border border-[#EFE9DE] shadow-xs p-5 sm:p-6">
         <h3 className="font-serif text-lg font-bold text-[#2C241E]">Destinatarios</h3>
         <p className="text-xs sm:text-sm text-[#6B625B] mt-1">
-          Las personas que recibirán tus recuerdos. El teléfono debe incluir código de país (ej: +52...).
+          Las personas que recibirán tus recuerdos. El teléfono debe incluir código de país (ej: +507...).
         </p>
 
         {recipients.length > 0 && (
@@ -386,7 +406,7 @@ export default function DeliveryPanel({ userId, recipients, memories, onRecipien
           />
           <input
             type="tel"
-            placeholder="WhatsApp (+52...)"
+            placeholder="WhatsApp (+507...)"
             value={rPhone}
             onChange={(e) => setRPhone(e.target.value)}
             className="px-3.5 py-2.5 rounded-xl bg-[#FDFBF7] border border-[#EFE9DE] focus:border-[#D4AF37] focus:ring-1 focus:ring-[#D4AF37] outline-hidden text-sm text-[#2C241E]"
@@ -402,16 +422,16 @@ export default function DeliveryPanel({ userId, recipients, memories, onRecipien
         </form>
       </section>
 
-      {/* Custodio */}
+      {/* Persona de confianza */}
       <section className="bg-[#FFFFFF] rounded-2xl border border-[#EFE9DE] shadow-xs p-5 sm:p-6">
         <div className="flex items-center gap-2.5">
           <div className="w-9 h-9 rounded-xl bg-[#FAF4E5] border border-[#D4AF37]/40 flex items-center justify-center text-[#D4AF37] shrink-0">
             <UserPlus className="w-4 h-4" />
           </div>
           <div>
-            <h3 className="font-serif text-lg font-bold text-[#2C241E]">Custodio de entrega</h3>
+            <h3 className="font-serif text-lg font-bold text-[#2C241E]">Tu persona de confianza</h3>
             <p className="text-xs sm:text-sm text-[#6B625B]">
-              Persona de confianza que podrá activar la entrega. Nada se envía sin un período de espera que tú puedes cancelar.
+              Cuando tú faltes, esta persona avisa a E-ternal y tus recuerdos llegan por WhatsApp. Nada se envía sin tu permiso: siempre puedes cancelar.
             </p>
           </div>
         </div>
@@ -445,23 +465,23 @@ export default function DeliveryPanel({ userId, recipients, memories, onRecipien
               className="flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl bg-[#D4AF37] hover:bg-[#C59F2D] text-white text-sm font-semibold transition-all cursor-pointer disabled:opacity-60"
             >
               {busy === 'custodian' ? <Loader2 className="w-4 h-4 animate-spin" /> : <ShieldCheck className="w-4 h-4" />}
-              Designar
+              Guardar
             </button>
           </form>
         ) : (
           <div className="mt-4 px-4 py-3.5 rounded-xl bg-[#FDFBF7] border border-[#EFE9DE] space-y-2">
             <p className="text-sm font-semibold text-[#2C241E]">
-              {custodian.name || 'Custodio'} • {custodian.email || custodian.phone || 'sin contacto'}
+              {custodian.name || 'Tu persona'} • {custodian.email || custodian.phone || 'sin contacto'}
             </p>
             <p className="text-xs text-[#6B625B]">
-              Estado: <strong className="text-[#2C241E]">{custodian.executed ? 'Ejecutado' : custodian.vetoed ? 'Vetado por ti' : custodian.status === 'active' ? 'Activo' : 'Designado'}</strong>
-              {custodian.waiting_until ? ` • Se libera: ${formatDate(custodian.waiting_until)}` : null}
+              Estado: <strong className="text-[#2C241E]">{custodian.executed ? 'Entregado' : custodian.vetoed ? 'Cancelada por ti' : custodian.status === 'active' ? 'En espera' : 'Anotada'}</strong>
+              {custodian.waiting_until ? ` • Se entrega: ${formatDate(custodian.waiting_until)}` : null}
             </p>
             <div className="flex flex-wrap gap-2.5 pt-1">
               {custodian.status === 'nominated' && !custodian.vetoed && (
                 <div className="flex flex-wrap items-center gap-2.5">
                   <label className="flex items-center gap-2 text-xs font-semibold text-[#2C241E]">
-                    Fecha y hora de liberación
+                    ¿Cuándo se entregan?
                     <input
                       type="datetime-local"
                       value={waitDateTime}
@@ -473,7 +493,7 @@ export default function DeliveryPanel({ userId, recipients, memories, onRecipien
                     type="button"
                     onClick={programDelivery}
                     disabled={busy === 'activate-demo'}
-                    title="Programa el envío por WhatsApp para esa fecha (lo ejecuta el reparto diario)"
+                    title="Programa el envío por WhatsApp para esa fecha"
                     className="flex items-center gap-2 px-4 py-2 rounded-xl bg-[#2C241E] hover:bg-[#3E342B] text-[#FAF4E5] text-xs font-semibold transition-all cursor-pointer disabled:opacity-60"
                   >
                     {busy === 'activate-demo' ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Send className="w-3.5 h-3.5 text-[#D4AF37]" />}
@@ -483,10 +503,10 @@ export default function DeliveryPanel({ userId, recipients, memories, onRecipien
                     type="button"
                     onClick={() => callDispatch('activate-demo', { waiting_minutes: 1 })}
                     disabled={busy === 'activate-demo'}
-                    title="Prueba rápida: libera la entrega en 1 minuto"
+                    title="Prueba: tus recuerdos quedan listos en 1 minuto"
                     className="flex items-center gap-2 px-4 py-2 rounded-xl bg-[#FAF4E5] hover:bg-[#EFE9DE] text-[#2C241E] border border-[#E8D8A6] text-xs font-semibold transition-all cursor-pointer disabled:opacity-60"
                   >
-                    Probar en 1 min
+                    Probar (1 min)
                   </button>
                 </div>
               )}
@@ -498,27 +518,18 @@ export default function DeliveryPanel({ userId, recipients, memories, onRecipien
                   className="flex items-center gap-2 px-4 py-2 rounded-xl bg-white hover:bg-red-50 text-red-800 border border-red-200 text-xs font-semibold transition-all cursor-pointer disabled:opacity-60"
                 >
                   {busy === 'veto' ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <XCircle className="w-3.5 h-3.5" />}
-                  Cancelar entrega (veto)
+                  Cancelar la entrega
                 </button>
               )}
               <button
                 type="button"
                 onClick={() => callDispatch('dispatch-now')}
                 disabled={busy === 'dispatch-now'}
-                title="Envía ahora mismo aunque la fecha sea futura. Real si DEMO_MODE=false; si no, simula"
+                title="Envía ahora mismo por WhatsApp, sin esperar la fecha"
                 className="flex items-center gap-2 px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-semibold transition-all cursor-pointer disabled:opacity-60"
               >
                 {busy === 'dispatch-now' ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Send className="w-3.5 h-3.5" />}
                 Enviar por WhatsApp ahora
-              </button>
-              <button
-                type="button"
-                onClick={() => callDispatch('dispatch-demo')}
-                disabled={busy === 'dispatch-demo'}
-                className="flex items-center gap-2 px-4 py-2 rounded-xl bg-[#FAF4E5] hover:bg-[#EFE9DE] text-[#2C241E] border border-[#E8D8A6] text-xs font-semibold transition-all cursor-pointer disabled:opacity-60"
-              >
-                {busy === 'dispatch-demo' ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Send className="w-3.5 h-3.5 text-[#D4AF37]" />}
-                Ejecutar reparto ahora (demo)
               </button>
             </div>
           </div>
@@ -527,17 +538,17 @@ export default function DeliveryPanel({ userId, recipients, memories, onRecipien
 
       {/* Entregas */}
       <section className="bg-[#FFFFFF] rounded-2xl border border-[#EFE9DE] shadow-xs p-5 sm:p-6">
-        <h3 className="font-serif text-lg font-bold text-[#2C241E]">Entregas</h3>
+        <h3 className="font-serif text-lg font-bold text-[#2C241E]">Tus entregas</h3>
         <p className="text-xs sm:text-sm text-[#6B625B] mt-1">
-          Estado de cada recuerdo programado para sus destinatarios.
+          Aquí ves qué se va a enviar, a quién y cuándo.
         </p>
         {deliveries.length === 0 ? (
           <div className="mt-4 bg-[#FDFBF7] border border-dashed border-[#EFE9DE] rounded-xl px-4 py-4 space-y-2">
-            <p className="text-sm font-semibold text-[#2C241E]">Aún no hay entregas. Para crearlas necesitas:</p>
+            <p className="text-sm font-semibold text-[#2C241E]">Tus entregas aparecerán aquí al completar estos 3 pasos:</p>
             <ul className="space-y-1.5 text-[13px] text-[#6B625B]">
               <li className="flex items-center gap-2">
                 {assignedCount > 0 ? <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" /> : <XCircle className="w-4 h-4 text-amber-500 shrink-0" />}
-                Recuerdos asignados a una persona: {assignedCount} de {memories.length}
+                Recuerdos con destinatario: {assignedCount} de {memories.length}
               </li>
               <li className="flex items-center gap-2">
                 {phoneCount > 0 ? <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" /> : <XCircle className="w-4 h-4 text-amber-500 shrink-0" />}
@@ -545,13 +556,13 @@ export default function DeliveryPanel({ userId, recipients, memories, onRecipien
               </li>
               <li className="flex items-center gap-2">
                 {custodianReleased ? <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" /> : <XCircle className="w-4 h-4 text-amber-500 shrink-0" />}
-                Custodio: {custodianHint}
+                Persona de confianza: {custodianHint}
               </li>
             </ul>
             <p className="text-xs text-[#6B625B]">
               {assignedCount > 0 && phoneCount > 0 && custodianReleased
-                ? 'Todo listo: pulsa Ejecutar reparto o Enviar por WhatsApp.'
-                : 'Completa lo marcado y pulsa Ejecutar reparto. Para enviar un video ya, usa su botón WhatsApp directo.'}
+                ? 'Todo listo: pulsa Enviar por WhatsApp ahora.'
+                : 'Completa lo marcado arriba. Para enviar algo hoy mismo, usa el botón WhatsApp de cada recuerdo.'}
             </p>
           </div>
         ) : (

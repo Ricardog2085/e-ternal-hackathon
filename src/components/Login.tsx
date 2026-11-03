@@ -13,6 +13,9 @@ import {
 } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 
+// Interruptor del botón Facebook: false hasta pasar verificación Meta (modo Desarrollo bloquea el login).
+const FACEBOOK_LOGIN_ENABLED = false;
+
 function FacebookIcon({ className = '' }: { className?: string }) {
   return (
     <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true" className={className}>
@@ -309,6 +312,9 @@ export default function Login({ onSuccess }: LoginProps) {
           </div>
         </form>
 
+        {/* Botón Facebook pausado hasta pasar verificación Meta */}
+        {FACEBOOK_LOGIN_ENABLED && (
+          <>
         {/* Separador */}
         <div className="mt-6 flex items-center gap-3 text-[11px] font-semibold uppercase tracking-widest text-[#6B625B]/70">
           <span className="flex-1 border-t border-[#F3ECE0]" />
@@ -330,6 +336,8 @@ export default function Login({ onSuccess }: LoginProps) {
           )}
           <span>Continuar con Facebook</span>
         </button>
+          </>
+        )}
 
         {/* Alternar entre Ingresar, Crear Cuenta y Recuperar */}
         <div className="mt-6 pt-5 border-t border-[#F3ECE0] text-center space-y-2.5">
